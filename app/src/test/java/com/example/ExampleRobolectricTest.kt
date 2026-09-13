@@ -142,4 +142,19 @@ class ExampleRobolectricTest {
         com.example.gemini.ApiKeyManager.clearCustomApiKey(context)
         assertEquals(null, com.example.gemini.ApiKeyManager.getCustomApiKey(context))
     }
+
+    @Test
+    fun `Bangla conversational queries route to DirectSpeech in pure Bangla`() {
+        val greeting = IntentRouter.parseUserCommand("কেমন আছো রাশেদ?")
+        assertTrue(greeting is ParsedIntent.DirectSpeech)
+        assertTrue((greeting as ParsedIntent.DirectSpeech).message.contains("ভালো আছি"))
+
+        val identity = IntentRouter.parseUserCommand("তোমার নাম কী?")
+        assertTrue(identity is ParsedIntent.DirectSpeech)
+        assertTrue((identity as ParsedIntent.DirectSpeech).message.contains("Rashed AI"))
+
+        val thanks = IntentRouter.parseUserCommand("অনেক ধন্যবাদ")
+        assertTrue(thanks is ParsedIntent.DirectSpeech)
+        assertTrue((thanks as ParsedIntent.DirectSpeech).message.contains("ধন্যবাদ"))
+    }
 }

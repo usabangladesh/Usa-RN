@@ -44,6 +44,7 @@ class AudioEngine(
     private var recordJob: Job? = null
     private var tts: TextToSpeech? = null
     private var isTtsReady = false
+    private var currentOnComplete: (() -> Unit)? = null
 
     private var speechRecognizer: SpeechRecognizer? = null
     private var isListeningForSpeech = false
@@ -63,10 +64,20 @@ class AudioEngine(
 
                     override fun onDone(utteranceId: String?) {
                         _isSpeaking.value = false
+                        val cb = currentOnComplete
+                        currentOnComplete = null
+                        scope.launch(Dispatchers.Main) {
+                            cb?.invoke()
+                        }
                     }
 
                     override fun onError(utteranceId: String?) {
                         _isSpeaking.value = false
+                        val cb = currentOnComplete
+                        currentOnComplete = null
+                        scope.launch(Dispatchers.Main) {
+                            cb?.invoke()
+                        }
                     }
                 })
             }
@@ -74,28 +85,55 @@ class AudioEngine(
     }
 
     fun speak(text: String, onComplete: (() -> Unit)? = null) {
-        if (!isTtsReady || text.isBlank()) {
+        val cleanText = text
+            .replace(Regex("[*#_`~>|\\[\\]]"), "")
+            .trim()
+
+        if (!isTtsReady || cleanText.isBlank()) {
             onComplete?.invoke()
             return
         }
 
         stopSpeaking()
+        currentOnComplete = onComplete
 
-        // Select optimal language voice
-        val targetLocale = when {
-            text.any { it in '\u0980'..'\u09FF' } -> Locale.forLanguageTag("bn-BD")
-            text.any { it in '\u0900'..'\u097F' } -> Locale.forLanguageTag("hi-IN")
-            else -> Locale.US
-        }
+        // Select optimal language voice for Bengali priority
+        val isBengali = cleanText.any { it in '\u0980'..'\u09FF' }
+        val isHindi = cleanText.any { it in '\u0900'..'\u097F' }
 
         try {
-            val result = tts?.setLanguage(targetLocale)
-            if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
-                // Fallback to English
-                tts?.language = Locale.US
+            if (isBengali) {
+                var voiceFound = false
+                try {
+                    val bnVoice = tts?.voices?.firstOrNull { it.locale.language.equals("bn", ignoreCase = true) }
+                    if (bnVoice != null) {
+                        tts?.voice = bnVoice
+                        voiceFound = true
+                    }
+                } catch (_: Exception) {}
+
+                if (!voiceFound) {
+                    val bnBd = Locale.forLanguageTag("bn-BD")
+                    val resBd = tts?.setLanguage(bnBd)
+                    if (resBd == TextToSpeech.LANG_MISSING_DATA || resBd == TextToSpeech.LANG_NOT_SUPPORTED) {
+                        val bnIn = Locale("bn", "IN")
+                        val resIn = tts?.setLanguage(bnIn)
+                        if (resIn == TextToSpeech.LANG_MISSING_DATA || resIn == TextToSpeech.LANG_NOT_SUPPORTED) {
+                            tts?.setLanguage(Locale("bn"))
+                        }
+                    }
+                }
+                tts?.setPitch(1.0f)
+                tts?.setSpeechRate(0.95f) // optimal cadence for natural Bangla delivery
+            } else if (isHindi) {
+                tts?.setLanguage(Locale("hi", "IN"))
+                tts?.setPitch(1.0f)
+                tts?.setSpeechRate(1.0f)
+            } else {
+                tts?.setLanguage(Locale.US)
+                tts?.setPitch(1.02f)
+                tts?.setSpeechRate(1.0f)
             }
-            tts?.setPitch(1.05f)
-            tts?.setSpeechRate(1.0f)
 
             val utteranceId = "Rashed_${System.currentTimeMillis()}"
             val params = Bundle().apply {
@@ -103,14 +141,17 @@ class AudioEngine(
             }
 
             _isSpeaking.value = true
-            tts?.speak(text, TextToSpeech.QUEUE_FLUSH, params, utteranceId)
+            tts?.speak(cleanText, TextToSpeech.QUEUE_FLUSH, params, utteranceId)
         } catch (_: Exception) {
             _isSpeaking.value = false
-            onComplete?.invoke()
+            val cb = currentOnComplete
+            currentOnComplete = null
+            cb?.invoke()
         }
     }
 
     fun stopSpeaking() {
+        currentOnComplete = null
         try {
             if (tts?.isSpeaking == true) {
                 tts?.stop()
@@ -207,7 +248,9 @@ class AudioEngine(
                     putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
                     putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
                     putExtra(RecognizerIntent.EXTRA_LANGUAGE, "bn-BD")
-                    putExtra(RecognizerIntent.EXTRA_SUPPORTED_LANGUAGES, arrayListOf("bn-BD", "en-US", "hi-IN"))
+                    putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "bn-BD")
+                    putExtra("android.speech.extra.EXTRA_ADDITIONAL_LANGUAGES", arrayOf("bn-BD", "bn-IN", "en-US"))
+                    putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, context.packageName)
                 }
 
                 speechRecognizer?.setRecognitionListener(object : RecognitionListener {

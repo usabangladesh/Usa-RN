@@ -4,6 +4,7 @@ import org.json.JSONObject
 
 sealed class ParsedIntent {
     data class DirectTool(val toolName: String, val args: JSONObject) : ParsedIntent()
+    data class DirectSpeech(val message: String) : ParsedIntent()
     object EmergencyStop : ParsedIntent()
     object UserConfirmed : ParsedIntent()
     object UserCancelled : ParsedIntent()
@@ -173,6 +174,23 @@ object IntentRouter {
             if (appCandidate.isNotBlank() && appCandidate.length < 25) {
                 return ParsedIntent.DirectTool("openApp", JSONObject().put("appName", appCandidate))
             }
+        }
+
+        // 18. Quick Conversational Bangla Replies (Instant voice response)
+        if (lower.contains("কেমন আছো") || lower.contains("কেমন আছেন") || lower.contains("how are you")) {
+            return ParsedIntent.DirectSpeech("আমি ভালো আছি! আপনার ফোনে যেকোনো কাজের জন্য বলুন, আমি করে দিচ্ছি।")
+        }
+        if (lower.contains("তোমার নাম কি") || lower.contains("তোমার নাম কী") || lower.contains("who are you") || lower.contains("তুমি কে")) {
+            return ParsedIntent.DirectSpeech("আমি Rashed AI, আপনার বাস্তব Android Voice Assistant। বলুন, কীভাবে সাহায্য করতে পারি?")
+        }
+        if (lower.contains("ধন্যবাদ") || lower.contains("থ্যাংক") || lower.contains("thank you") || lower.contains("thanks")) {
+            return ParsedIntent.DirectSpeech("আপনাকে অনেক ধন্যবাদ! যেকোনো প্রয়োজনে আমাকে ডাকবেন।")
+        }
+        if (lower.contains("কী করতে পারো") || lower.contains("কি কি করতে পারো") || lower.contains("কি করতে পারো") || lower.contains("what can you do")) {
+            return ParsedIntent.DirectSpeech("আমি অ্যাপ খোলা, ইউটিউবে ভিডিও চালানো, হোয়াটসঅ্যাপে মেসেজ পাঠানো, ভলিউম ও মিডিয়া নিয়ন্ত্রণ এবং ব্যাটারি ও ফোন লক করা সহ নানা কাজ করতে পারি।")
+        }
+        if (lower == "হাই" || lower == "হ্যালো" || lower == "হ্যালো রাশেদ" || lower == "হাই রাশেদ" || lower == "রাশেদ" || lower == "rashed" || lower == "hello" || lower == "hi") {
+            return ParsedIntent.DirectSpeech("হ্যালো! আমি শুনছি, বলুন কী সাহায্য করতে পারি?")
         }
 
         // Default: Forward to Gemini reasoning & dynamic tool execution

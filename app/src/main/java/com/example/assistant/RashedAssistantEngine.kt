@@ -146,6 +146,10 @@ class RashedAssistantEngine(
                     speakAndShowResponse("ঠিক আছে, বাতিল করা হলো।", null)
                 }
 
+                is ParsedIntent.DirectSpeech -> {
+                    speakAndShowResponse(intent.message, "Rashed AI")
+                }
+
                 is ParsedIntent.DirectTool -> {
                     executeToolDirectly(intent.toolName, intent.args)
                 }

@@ -1,0 +1,7 @@
+{
+  "name": "Rashed AI",
+  "description": "Next-generation multilingual voice assistant for Samsung Android with real OS automation, Gemini Live intelligence, and privacy-first control.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+

@@ -1,0 +1,7 @@
+<resources>
+    <string name="app_name">Rashed AI</string>
+    <string name="tagline">Your Voice. Your Intelligence. Your Control.</string>
+    <string name="accessibility_service_description">Enables Rashed AI voice assistant to perform authorized device navigation, screen reading, and hands-free actions.</string>
+    <string name="notification_channel_name">Rashed AI Voice Service</string>
+    <string name="notification_channel_desc">Active microphone and assistant background voice session</string>
+</resources>

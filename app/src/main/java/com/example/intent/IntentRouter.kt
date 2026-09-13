@@ -16,13 +16,13 @@ object IntentRouter {
         val text = input.trim()
         val lower = text.lowercase()
 
-        // 1. Emergency stop check
+        // 1. Emergency stop check (Section 20 & 34)
         val stopKeywords = listOf("থামো", "থামাও", "চুপ করো", "stop", "halt", "ruko", "band karo")
-        if (stopKeywords.any { lower == it || lower.startsWith("$it ") || lower.endsWith(" $it") }) {
+        if (stopKeywords.any { lower == it || lower.startsWith("$it ") || lower.endsWith(" $it") || lower.contains("রশিদ থামো") || lower.contains("rashed থামো") }) {
             return ParsedIntent.EmergencyStop
         }
 
-        // 2. Confirmation check
+        // 2. Confirmation check (Section 9)
         val confirmKeywords = listOf("হ্যাঁ", "হ্যা", "পাঠাও", "করো", "send", "yes", "yep", "sure", "ok", "হুম", "ঠিক আছে", "भेजो", "हाँ")
         if (confirmKeywords.any { lower == it || lower.startsWith("$it ") }) {
             return ParsedIntent.UserConfirmed
@@ -34,37 +34,90 @@ object IntentRouter {
             return ParsedIntent.UserCancelled
         }
 
-        // 4. Quick local matches for rapid offline or instant execution:
+        // 4. Back navigation (Section 16, Test 3)
+        if (lower.contains("back") || lower.contains("আগের পাতা") || lower.contains("পিছনে যাও") || lower.contains("পিছে যাও") || lower.contains("ফিরে যাও")) {
+            return ParsedIntent.DirectTool("accessibilityBack", JSONObject())
+        }
 
-        // Battery queries
-        if (lower.contains("battery") || lower.contains("ব্যাটারি") || lower.contains("চার্জ") || lower.contains("charging")) {
+        // 5. Scroll navigation (Section 16)
+        if (lower.contains("scroll") || lower.contains("স্ক্রোল")) {
+            val dir = if (lower.contains("উপরে") || lower.contains("up")) "up" else "down"
+            return ParsedIntent.DirectTool("accessibilityScroll", JSONObject().put("direction", dir))
+        }
+
+        // 6. YouTube Specific Automation (Section 6 & 7, Tests 1 & 2)
+        if (lower.contains("youtube") || lower.contains("ইউটিউব")) {
+            if (lower.contains("search") || lower.contains("সার্চ") || lower.contains("খুঁজ") || lower.contains("খোজ")) {
+                // Extract query: e.g. "YouTube-এ Ronaldo search করো"
+                val cleanQuery = extractYouTubeQuery(text)
+                return ParsedIntent.DirectTool("searchYouTube", JSONObject().put("query", cleanQuery))
+            }
+            if (lower.contains("ভিডিও") && (lower.contains("চালাও") || lower.contains("play"))) {
+                val videoTitle = extractYouTubeQuery(text)
+                return ParsedIntent.DirectTool("playYouTubeVideo", JSONObject().put("videoTitle", videoTitle))
+            }
+            if (lower.contains("খোল") || lower.contains("open") || lower.contains("চালু")) {
+                return ParsedIntent.DirectTool("openApp", JSONObject().put("appName", "YouTube"))
+            }
+        }
+
+        // Standalone video play: e.g. "Ronaldo-এর ভিডিওটা চালাও"
+        if (lower.contains("ভিডিও") && (lower.contains("চালাও") || lower.contains("প্লে") || lower.contains("play"))) {
+            val videoTitle = text.replace("এর ভিডিওটা চালাও", "")
+                .replace("এর ভিডিও চালাও", "")
+                .replace("ভিডিও চালাও", "")
+                .replace("ভিডিওটা চালাও", "")
+                .replace("play video", "")
+                .replace("-এর", "")
+                .trim()
+            return ParsedIntent.DirectTool("playYouTubeVideo", JSONObject().put("videoTitle", videoTitle))
+        }
+
+        // 7. WhatsApp Contact & Message Automation (Section 8, Tests 4 & 5)
+        if (lower.contains("whatsapp") || lower.contains("হোয়াটসঅ্যাপ") || lower.contains("হোয়াটসঅ্যাপ")) {
+            if (lower.contains("chat") || lower.contains("চ্যাট") || lower.contains("খোলো") || lower.contains("খোল")) {
+                val contactName = extractContactName(text)
+                if (contactName.isNotBlank()) {
+                    return ParsedIntent.DirectTool("openWhatsAppConversation", JSONObject().put("contactName", contactName))
+                }
+            }
+        }
+
+        // WhatsApp message command: e.g. "Rahim-কে লিখো আমি পরে আসব" or "Rahim-কে বলো আমি আজ আসতে পারব না"
+        val messageMatch = detectWhatsAppMessageIntent(lower, text)
+        if (messageMatch != null) {
+            return ParsedIntent.DirectTool("prepareMessage", messageMatch)
+        }
+
+        // 8. Battery queries (Section 15)
+        if (lower.contains("battery") || lower.contains("ব্যাটারি") || lower.contains("চার্জ কত") || lower.contains("charging হচ্ছে")) {
             return ParsedIntent.DirectTool("getBatteryStatus", JSONObject())
         }
 
-        // Wi-Fi queries
+        // 9. Wi-Fi queries & Settings
         if (lower.contains("wi-fi") || lower.contains("wifi") || lower.contains("ওয়াইফাই") || lower.contains("ওয়াইফাই")) {
             if (lower.contains("setting") || lower.contains("সেটিংস")) {
-                return ParsedIntent.DirectTool("openApp", JSONObject().put("appName", "wifi settings"))
+                return ParsedIntent.DirectTool("openWifiSettings", JSONObject())
             }
             return ParsedIntent.DirectTool("getWifiStatus", JSONObject())
         }
 
-        // Internet connectivity
-        if (lower.contains("internet") || lower.contains("ইন্টারনেট") || lower.contains("নেট আছে")) {
+        // 10. Internet connectivity
+        if (lower.contains("internet") || lower.contains("ইন্টারনেট") || lower.contains("নেট আছে") || lower.contains("নেটওয়ার্ক")) {
             return ParsedIntent.DirectTool("getNetworkStatus", JSONObject())
         }
 
-        // Storage queries
-        if (lower.contains("storage") || lower.contains("স্টোরেজ") || lower.contains("মেমরি") || lower.contains("memory খালি")) {
-            return ParsedIntent.DirectTool("getDeviceStatus", JSONObject())
+        // 11. Storage queries (Section 15)
+        if (lower.contains("storage") || lower.contains("স্টোরেজ") || lower.contains("মেমরি কত খালি") || lower.contains("storage কত খালি")) {
+            return ParsedIntent.DirectTool("getStorageStatus", JSONObject())
         }
 
-        // Device lock
+        // 12. Device lock
         if (lower.contains("lock") || lower.contains("লক") || lower.contains("স্ক্রিন অফ") || lower.contains("screen off")) {
             return ParsedIntent.DirectTool("lockDevice", JSONObject())
         }
 
-        // Volume control
+        // 13. Volume control (Section 13, Test 6)
         if (lower.contains("volume") || lower.contains("ভলিউম") || lower.contains("আওয়াজ") || lower.contains("সাউন্ড")) {
             return when {
                 lower.contains("কমা") || lower.contains("down") || lower.contains("low") || lower.contains("কম") -> {
@@ -83,8 +136,8 @@ object IntentRouter {
             }
         }
 
-        // Media control
-        if (lower.contains("pause") || lower.contains("মিউজিক থামাও") || lower.contains("গান থামাও") || lower.contains("গান বন্ধ")) {
+        // 14. Media control (Section 14, Test 7)
+        if (lower.contains("গান pause") || lower.contains("গান থামাও") || lower.contains("মিউজিক pause") || lower.contains("গান বন্ধ")) {
             return ParsedIntent.DirectTool("mediaControl", JSONObject().put("command", "pause"))
         }
         if (lower.contains("next song") || lower.contains("পরের গান") || lower.contains("next track")) {
@@ -93,66 +146,88 @@ object IntentRouter {
         if (lower.contains("previous song") || lower.contains("আগের গান")) {
             return ParsedIntent.DirectTool("mediaControl", JSONObject().put("command", "previous"))
         }
-        if (lower.contains("play music") || lower.contains("গান চালাও") || lower.contains("গান বাজা")) {
+        if (lower.contains("গান চালাও") || lower.contains("গান আবার চালাও") || lower.contains("play music") || lower.contains("গান বাজা")) {
             return ParsedIntent.DirectTool("mediaControl", JSONObject().put("command", "play"))
         }
 
-        // Camera
+        // 15. Camera
         if (lower.contains("camera") || lower.contains("ক্যামেরা") || lower.contains("ছবি তোল") || lower.contains("ক্যামেরা খোলো")) {
-            return ParsedIntent.DirectTool("openApp", JSONObject().put("appName", "Camera"))
+            return ParsedIntent.DirectTool("openCamera", JSONObject())
         }
 
-        // Bluetooth settings
+        // 16. Bluetooth settings
         if (lower.contains("bluetooth") || lower.contains("ব্লুটুথ")) {
-            return ParsedIntent.DirectTool("openApp", JSONObject().put("appName", "Bluetooth settings"))
+            if (lower.contains("setting") || lower.contains("সেটিংস")) {
+                return ParsedIntent.DirectTool("openBluetoothSettings", JSONObject())
+            }
         }
 
-        // Notification reader
-        if (lower.contains("notification") || lower.contains("নোটিফিকেশন") || lower.contains("মেসেজ কি এসেছে")) {
-            return ParsedIntent.DirectTool("notificationReader", JSONObject().put("limit", 3))
+        // 17. App launches (Generic)
+        if (lower.contains("খুলে দাও") || lower.contains("খোলো") || lower.contains("চালু করো") || lower.contains("open ")) {
+            val appCandidate = text
+                .replace("খুলে দাও", "")
+                .replace("খোলো", "")
+                .replace("চালু করো", "")
+                .replace("open ", "", ignoreCase = true)
+                .trim()
+            if (appCandidate.isNotBlank() && appCandidate.length < 25) {
+                return ParsedIntent.DirectTool("openApp", JSONObject().put("appName", appCandidate))
+            }
         }
 
-        // App launches: YouTube
-        if ((lower.contains("youtube") || lower.contains("ইউটিউব")) &&
-            (lower.contains("খোল") || lower.contains("চালু") || lower.contains("open") || lower.contains("play") || lower.contains("start"))) {
-            return ParsedIntent.DirectTool("openApp", JSONObject().put("appName", "YouTube"))
-        }
-
-        // App launches: WhatsApp
-        if ((lower.contains("whatsapp") || lower.contains("হোয়াটসঅ্যাপ") || lower.contains("হোয়াটসঅ্যাপ")) &&
-            !lower.contains("message") && !lower.contains("মেসেজ") && !lower.contains("বলো")) {
-            return ParsedIntent.DirectTool("openApp", JSONObject().put("appName", "WhatsApp"))
-        }
-
-        // WhatsApp message command: e.g. "WhatsApp খুলে Rahim-কে message দাও" or "Rahim-কে বলো আমি আজ আসতে পারব না"
-        val messageMatch = detectWhatsAppMessageIntent(lower, text)
-        if (messageMatch != null) {
-            return ParsedIntent.DirectTool("prepareMessage", messageMatch)
-        }
-
-        // Default to Gemini reasoning
+        // Default: Forward to Gemini reasoning & dynamic tool execution
         return ParsedIntent.GeneralGemini(text)
+    }
+
+    private fun extractYouTubeQuery(text: String): String {
+        return text
+            .replace("Rashed,", "", ignoreCase = true)
+            .replace("Rashed", "", ignoreCase = true)
+            .replace("YouTube-এ", "", ignoreCase = true)
+            .replace("YouTube এ", "", ignoreCase = true)
+            .replace("YouTube", "", ignoreCase = true)
+            .replace("ইউটিউব-এ", "")
+            .replace("ইউটিউবে", "")
+            .replace("ইউটিউব", "")
+            .replace("search করো", "", ignoreCase = true)
+            .replace("search", "", ignoreCase = true)
+            .replace("সার্চ করো", "")
+            .replace("খুঁজে বের করো", "")
+            .replace("খোঁজ", "")
+            .replace("খুলো", "")
+            .replace("খুলে", "")
+            .trim()
+    }
+
+    private fun extractContactName(text: String): String {
+        val words = text.split(" ")
+        for (w in words) {
+            val clean = w.replace("-এর", "").replace("এর", "").replace("-কে", "").replace("কে", "")
+            if (w.contains("-এর") || w.contains("এর")) {
+                return clean
+            }
+        }
+        return ""
     }
 
     private fun detectWhatsAppMessageIntent(lower: String, original: String): JSONObject? {
         val isMessageIntent = lower.contains("message") || lower.contains("মেসেজ") ||
-                lower.contains("বলো") || lower.contains("পাঠাও") || lower.contains("bolo")
+                lower.contains("বলো") || lower.contains("লিখো") || lower.contains("পাঠাও") || lower.contains("bolo")
 
         if (!isMessageIntent) return null
 
-        // Try to extract recipient and message
-        // Patterns: "Rahim-কে বলো [message]" or "WhatsApp-এ Rahim-কে message দাও [message]"
         val words = original.split(" ")
         var recipient = ""
         var message = ""
 
         for ((index, word) in words.withIndex()) {
             val clean = word.replace(",", "").replace("-কে", "").replace("কে", "")
-            if (word.contains("-কে") || word.contains("কে") && index > 0) {
+            if (word.contains("-কে") || (word.endsWith("কে") && index > 0)) {
                 recipient = clean
                 if (index + 1 < words.size) {
                     message = words.subList(index + 1, words.size).joinToString(" ")
                         .replace("বলো", "")
+                        .replace("লিখো", "")
                         .replace("message দাও", "")
                         .replace("মেসেজ দাও", "")
                         .replace("পাঠাও", "")
@@ -166,7 +241,6 @@ object IntentRouter {
             return JSONObject().apply {
                 put("recipient", recipient)
                 put("messageText", message)
-                put("platform", "whatsapp")
             }
         }
 

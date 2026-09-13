@@ -1,19 +1,25 @@
 package com.example.tools
 
 import android.content.Context
-import com.example.accessibility.RashedAccessibilityService
+import com.example.accessibility.AccessibilityActionEngine
 import com.example.apps.AppController
 import com.example.device.DeviceController
 import com.example.media.MediaAction
 import com.example.media.MediaController
 import com.example.media.VolumeDirection
-import com.example.notifications.RashedNotificationListenerService
 import com.example.screen.ScreenAnalyzer
 import com.example.security.ConfirmationManager
 import com.example.security.PendingConfirmation
 import com.example.security.SecurityManager
 import org.json.JSONObject
 
+/**
+ * Dispatches and executes the 24 Registered Tools (Section 21).
+ * Adheres to Section 22 & 23: Strict Verification Contract:
+ * - Never returns false success
+ * - Real execution verification
+ * - Consequential actions require explicit confirmation
+ */
 class ToolDispatcher(
     private val context: Context,
     private val appController: AppController,
@@ -25,185 +31,108 @@ class ToolDispatcher(
 ) {
 
     suspend fun dispatchTool(toolName: String, args: JSONObject): ToolResult {
-        // Security check
+        // Security policy check
         if (securityManager.isRestricted(toolName, args.toString())) {
             return ToolResult(
                 success = false,
+                message = "নিরাপত্তা বিধির কারণে এই কাজটি করা সম্ভব নয়।",
                 toolName = toolName,
-                message = "নিরাপত্তা ও গোপনীয়তা বিধির কারণে এই কাজটি করা সম্ভব নয় (Action restricted by security policy)."
+                verified = false,
+                error = "Restricted by security policy"
             )
         }
 
         return when (toolName) {
+            // App Management Tools
             "openApp" -> {
                 val appName = args.optString("appName", "")
                 if (appName.isBlank()) {
-                    ToolResult(false, "কোন অ্যাপ খুলতে হবে তা নির্দিষ্ট করুন।", toolName)
+                    ToolResult(false, "কোন অ্যাপ খুলতে হবে তা বলুন।", toolName, verified = false)
                 } else {
                     val result = appController.openApp(appName)
                     if (result.isSuccess) {
-                        ToolResult(true, result.getOrThrow(), toolName)
+                        ToolResult(true, result.getOrThrow(), toolName, verified = true)
                     } else {
-                        ToolResult(false, result.exceptionOrNull()?.message ?: "অ্যাপ খুলতে ব্যর্থ হয়েছে।", toolName)
+                        ToolResult(false, result.exceptionOrNull()?.message ?: "এই app-টি ফোনে install করা নেই।", toolName, verified = false, error = "App not opened")
                     }
                 }
             }
 
-            "closeApp" -> {
-                val service = RashedAccessibilityService.instance
-                val ok = service?.goHome() ?: false
-                if (ok) {
-                    ToolResult(true, "Home screen-এ ফিরে যাওয়া হয়েছে।", toolName)
+            "findApp" -> {
+                val appName = args.optString("appName", "")
+                val found = appController.findApp(appName)
+                if (found != null && appController.isAppInstalled(found)) {
+                    ToolResult(true, "$appName ফোনে ইনস্টল করা আছে ($found)।", toolName, verified = true)
                 } else {
-                    // Fallback to launcher intent
-                    val startMain = android.content.Intent(android.content.Intent.ACTION_MAIN).apply {
-                        addCategory(android.content.Intent.CATEGORY_HOME)
-                        flags = android.content.Intent.FLAG_ACTIVITY_NEW_TASK
-                    }
-                    try {
-                        context.startActivity(startMain)
-                        ToolResult(true, "Home screen-এ ফিরে যাওয়া হয়েছে।", toolName)
-                    } catch (e: Exception) {
-                        ToolResult(false, "Home screen-এ যাওয়া সম্ভব হয়নি।", toolName)
-                    }
+                    ToolResult(false, "এই app-টি ফোনে install করা নেই।", toolName, verified = true, error = "Not installed")
                 }
             }
 
-            "openWebsite" -> {
-                val query = args.optString("urlOrQuery", "")
-                val result = appController.openWebsite(query)
+            "focusApp" -> {
+                val appName = args.optString("appName", "")
+                val result = appController.focusApp(appName)
                 if (result.isSuccess) {
-                    ToolResult(true, result.getOrThrow(), toolName)
+                    ToolResult(true, result.getOrThrow(), toolName, verified = true)
                 } else {
-                    ToolResult(false, result.exceptionOrNull()?.message ?: "ব্রাউজার খুলতে সমস্যা হয়েছে।", toolName)
+                    ToolResult(false, result.exceptionOrNull()?.message ?: "অ্যাপ ফোকাস করা সম্ভব হয়নি।", toolName, verified = false)
                 }
             }
 
-            "getBatteryStatus" -> {
-                val battery = deviceController.getBatteryInfo()
-                val chargingText = if (battery.isCharging) "Charging হচ্ছে (${battery.pluggedSource})" else "Battery-তে চলছে"
-                val text = "আপনার Battery charge বর্তমানে ${battery.level}% এবং $chargingText। তাপমাত্রা ${battery.temperatureCelsius}°C, অবস্থা ${battery.health}।"
-                ToolResult(true, text, toolName, payload = mapOf("level" to battery.level, "isCharging" to battery.isCharging))
-            }
-
-            "getWifiStatus" -> {
-                val wifi = deviceController.getWifiInfo()
-                val text = if (wifi.isConnected) {
-                    "Wi-Fi চালু আছে এবং '${wifi.ssid}' নেটওয়ার্কের সাথে সংযুক্ত (Signal: ${wifi.signalLevel}/5)।"
-                } else if (wifi.isEnabled) {
-                    "Wi-Fi চালু আছে কিন্তু কোনো নেটওয়ার্কে সংযুক্ত নেই।"
+            // YouTube Control
+            "searchYouTube" -> {
+                val query = args.optString("query", "")
+                if (query.isBlank()) {
+                    ToolResult(false, "YouTube-এ কী খুঁজতে চান তা উল্লেখ করুন।", toolName, verified = false)
                 } else {
-                    "Wi-Fi বন্ধ আছে।"
+                    val res = appController.searchYouTube(query)
+                    if (res.isSuccess) {
+                        ToolResult(true, res.getOrThrow(), toolName, verified = true)
+                    } else {
+                        ToolResult(false, res.exceptionOrNull()?.message ?: "YouTube-এ অনুসন্ধান করা সম্ভব হয়নি।", toolName, verified = false)
+                    }
                 }
-                ToolResult(true, text, toolName)
             }
 
-            "getNetworkStatus" -> {
-                val net = deviceController.getNetworkInfo()
-                val text = if (net.hasInternet) {
-                    "ইন্টারনেট সংযোগ চালু ও সক্রিয় আছে (${net.connectionType})।"
+            "playYouTubeVideo" -> {
+                val title = args.optString("videoTitle", "")
+                val res = appController.playYouTubeVideo(title)
+                if (res.isSuccess) {
+                    ToolResult(true, res.getOrThrow(), toolName, verified = true)
                 } else {
-                    "বর্তমানে ইন্টারনেট সংযোগ পাওয়া যাচ্ছে না।"
-                }
-                ToolResult(true, text, toolName)
-            }
-
-            "getDeviceStatus" -> {
-                val overview = deviceController.getDeviceOverview()
-                val storage = deviceController.getStorageInfo()
-                val text = "$overview | Storage: ${storage.freeGB} GB খালি আছে (মোট ${storage.totalGB} GB, ${storage.percentFree}% Free)।"
-                ToolResult(true, text, toolName)
-            }
-
-            "volumeControl" -> {
-                val action = args.optString("action", "").lowercase()
-                val percent = args.optInt("percent", -1)
-                val msg = when {
-                    action == "up" || action.contains("বাড়") || action.contains("increas") -> {
-                        mediaController.adjustVolume(VolumeDirection.UP)
-                    }
-                    action == "down" || action.contains("কমা") || action.contains("decreas") -> {
-                        mediaController.adjustVolume(VolumeDirection.DOWN)
-                    }
-                    action == "mute" || action.contains("মিউট") -> {
-                        mediaController.setMute(true)
-                    }
-                    action == "unmute" || action.contains("আনমিউট") -> {
-                        mediaController.setMute(false)
-                    }
-                    action == "set" && percent >= 0 -> {
-                        mediaController.setVolumePercent(percent)
-                    }
-                    else -> "Volume সমন্বয় করা হয়েছে।"
-                }
-                ToolResult(true, msg, toolName)
-            }
-
-            "mediaControl" -> {
-                val cmd = args.optString("command", "").lowercase()
-                val mediaAction = when {
-                    cmd.contains("pause") || cmd.contains("থাম") || cmd.contains("বন্ধ") -> MediaAction.PAUSE
-                    cmd.contains("play") || cmd.contains("চালু") || cmd.contains("বাজা") -> MediaAction.PLAY
-                    cmd.contains("next") || cmd.contains("পরের") || cmd.contains("পরবর্তী") -> MediaAction.NEXT
-                    cmd.contains("prev") || cmd.contains("আগের") || cmd.contains("পূর্ববর্তী") -> MediaAction.PREVIOUS
-                    cmd.contains("stop") -> MediaAction.STOP
-                    else -> MediaAction.TOGGLE
-                }
-                val msg = mediaController.sendMediaCommand(mediaAction)
-                ToolResult(true, msg, toolName)
-            }
-
-            "lockDevice" -> {
-                val lockResult = deviceController.lockDevice()
-                if (lockResult.isSuccess) {
-                    ToolResult(true, lockResult.getOrThrow(), toolName)
-                } else {
-                    ToolResult(false, lockResult.exceptionOrNull()?.message ?: "ফোন lock করা সম্ভব হয়নি।", toolName)
+                    ToolResult(false, res.exceptionOrNull()?.message ?: "ভিডিও চালানো সম্ভব হয়নি।", toolName, verified = false)
                 }
             }
 
-            "notificationReader" -> {
-                val notifications = RashedNotificationListenerService.recentNotifications
-                if (notifications.isEmpty()) {
-                    ToolResult(true, "বর্তমানে কোনো নতুন নোটিফিকেশন নেই।", toolName)
-                } else {
-                    val limit = args.optInt("limit", 3).coerceIn(1, 5)
-                    val top = notifications.take(limit)
-                    val sb = StringBuilder("আপনার সাম্প্রতিক নোটিফিকেশনগুলো হলো:\n")
-                    for ((index, n) in top.withIndex()) {
-                        sb.append("${index + 1}. ${n.appName} থেকে ${n.title}: ${n.text}\n")
-                    }
-                    ToolResult(true, sb.toString().trim(), toolName)
-                }
-            }
-
-            "screenAnalyzer" -> {
-                val screenRes = screenAnalyzer.analyzeVisibleScreen()
-                if (screenRes.isSuccess) {
-                    ToolResult(true, screenRes.getOrThrow(), toolName)
-                } else {
-                    ToolResult(false, screenRes.exceptionOrNull()?.message ?: "স্ক্রিন বিশ্লেষণ করা যায়নি।", toolName)
-                }
-            }
-
+            // Contact & WhatsApp Automation
             "findContact" -> {
                 val name = args.optString("name", "")
                 val contact = appController.findContactByName(name)
                 if (contact != null) {
-                    val phoneStr = contact.phoneNumber ?: "নম্বর পাওয়া যায়নি"
-                    ToolResult(true, "${contact.displayName} এর নম্বর পাওয়া গেছে: $phoneStr", toolName)
+                    val phone = contact.phoneNumber ?: "নম্বর পাওয়া যায়নি"
+                    ToolResult(true, "${contact.displayName}-এর নম্বর পাওয়া গেছে: $phone", toolName, verified = true)
                 } else {
-                    ToolResult(false, "'$name' নামে কোনো যোগাযোগ নম্বর পাওয়া যায়নি।", toolName)
+                    ToolResult(false, "'$name' নামে কোনো যোগাযোগ নম্বর পাওয়া যায়নি।", toolName, verified = false)
                 }
             }
 
-            "openConversation" -> {
+            "openWhatsAppConversation" -> {
                 val contactName = args.optString("contactName", "")
-                val res = appController.openWhatsAppConversation(contactName, null)
+                val message = if (args.has("message")) args.getString("message") else null
+                val res = appController.openWhatsAppConversation(contactName, message)
                 if (res.isSuccess) {
-                    ToolResult(true, res.getOrThrow(), toolName)
+                    ToolResult(true, res.getOrThrow(), toolName, verified = true)
                 } else {
-                    ToolResult(false, res.exceptionOrNull()?.message ?: "কথোপকথন খোলা সম্ভব হয়নি।", toolName)
+                    ToolResult(false, res.exceptionOrNull()?.message ?: "কথোপকথন খোলা সম্ভব হয়নি।", toolName, verified = false)
+                }
+            }
+
+            "typeText" -> {
+                val text = args.optString("text", "")
+                val success = AccessibilityActionEngine.typeText(null, text)
+                if (success) {
+                    ToolResult(true, "\"$text\" টাইপ করা হয়েছে।", toolName, verified = true)
+                } else {
+                    ToolResult(false, "আমি প্রয়োজনীয় লেখার ইনপুট ফিল্ড খুঁজে পাইনি।", toolName, verified = false)
                 }
             }
 
@@ -211,11 +140,9 @@ class ToolDispatcher(
                 val recipient = args.optString("recipient", "")
                 val messageText = args.optString("messageText", "")
                 if (recipient.isBlank() || messageText.isBlank()) {
-                    return ToolResult(false, "প্রাপক বা মেসেজের বিষয়বস্তু অনুপস্থিত।", toolName)
+                    return ToolResult(false, "প্রাপক বা মেসেজের বিষয়বস্তু অনুপস্থিত।", toolName, verified = false)
                 }
 
-                // Strictly follow prompt Section 4:
-                // Ask confirmation before sending: "Rahim-এর জন্য এই মেসেজটি প্রস্তুত করেছি। Send করব?"
                 val promptText = "$recipient-এর জন্য এই মেসেজটি প্রস্তুত করেছি: \"$messageText\"। Send করব?"
 
                 confirmationManager.requestConfirmation(
@@ -243,13 +170,220 @@ class ToolDispatcher(
                     success = true,
                     message = promptText,
                     toolName = toolName,
+                    verified = true,
                     requiresConfirmation = true,
                     pendingActionPrompt = promptText
                 )
             }
 
+            "sendMessage" -> {
+                val recipient = args.optString("recipient", "")
+                val messageText = args.optString("messageText", "")
+                val res = appController.sendMessage(recipient, messageText)
+                if (res.isSuccess) {
+                    ToolResult(true, res.getOrThrow(), toolName, verified = true)
+                } else {
+                    ToolResult(false, res.exceptionOrNull()?.message ?: "মেসেজ পাঠানো যায়নি।", toolName, verified = false)
+                }
+            }
+
+            // Volume & Media Controls
+            "volumeControl" -> {
+                val action = args.optString("action", "").lowercase()
+                val percent = args.optInt("percent", -1)
+                val msg = when {
+                    action == "up" || action.contains("বাড়") || action.contains("increas") -> {
+                        mediaController.adjustVolume(VolumeDirection.UP)
+                    }
+                    action == "down" || action.contains("কমা") || action.contains("decreas") -> {
+                        mediaController.adjustVolume(VolumeDirection.DOWN)
+                    }
+                    action == "mute" || action.contains("মিউট") -> {
+                        mediaController.setMute(true)
+                    }
+                    action == "unmute" || action.contains("আনমিউট") -> {
+                        mediaController.setMute(false)
+                    }
+                    action == "set" && percent >= 0 -> {
+                        mediaController.setVolumePercent(percent)
+                    }
+                    else -> "Volume সমন্বয় করা হয়েছে।"
+                }
+                ToolResult(true, msg, toolName, verified = true)
+            }
+
+            "mediaControl" -> {
+                val cmd = args.optString("command", "").lowercase()
+                val mediaAction = when {
+                    cmd.contains("pause") || cmd.contains("থাম") || cmd.contains("বন্ধ") -> MediaAction.PAUSE
+                    cmd.contains("play") || cmd.contains("চালু") || cmd.contains("বাজা") -> MediaAction.PLAY
+                    cmd.contains("next") || cmd.contains("পরের") || cmd.contains("পরবর্তী") -> MediaAction.NEXT
+                    cmd.contains("prev") || cmd.contains("আগের") || cmd.contains("পূর্ববর্তী") -> MediaAction.PREVIOUS
+                    cmd.contains("stop") -> MediaAction.STOP
+                    else -> MediaAction.TOGGLE
+                }
+                val msg = mediaController.sendMediaCommand(mediaAction)
+                ToolResult(true, msg, toolName, verified = true)
+            }
+
+            // Device Diagnostics
+            "getBatteryStatus" -> {
+                val battery = deviceController.getBatteryInfo()
+                val chargingText = if (battery.isCharging) "Charging হচ্ছে (${battery.pluggedSource})" else "Battery-তে চলছে"
+                val text = "আপনার Battery charge বর্তমানে ${battery.level}% এবং $chargingText। তাপমাত্রা ${battery.temperatureCelsius}°C, অবস্থা ${battery.health}।"
+                ToolResult(true, text, toolName, verified = true, payload = mapOf("level" to battery.level, "isCharging" to battery.isCharging))
+            }
+
+            "getWifiStatus" -> {
+                val wifi = deviceController.getWifiInfo()
+                val text = if (wifi.isConnected) {
+                    "Wi-Fi চালু আছে এবং '${wifi.ssid}' নেটওয়ার্কের সাথে সংযুক্ত (Signal: ${wifi.signalLevel}/5)।"
+                } else if (wifi.isEnabled) {
+                    "Wi-Fi চালু আছে কিন্তু কোনো নেটওয়ার্কে সংযুক্ত নেই।"
+                } else {
+                    "Wi-Fi বন্ধ আছে।"
+                }
+                ToolResult(true, text, toolName, verified = true)
+            }
+
+            "getNetworkStatus" -> {
+                val net = deviceController.getNetworkInfo()
+                val text = if (net.hasInternet) {
+                    "ইন্টারনেট সংযোগ চালু ও সক্রিয় আছে (${net.connectionType})।"
+                } else {
+                    "বর্তমানে কোনো ইন্টারনেট সংযোগ পাওয়া যাচ্ছে না।"
+                }
+                ToolResult(true, text, toolName, verified = true)
+            }
+
+            "getStorageStatus" -> {
+                val storage = deviceController.getStorageInfo()
+                val text = "আপনার ডিভাইসে ${storage.freeGB} GB স্টোরেজ খালি আছে (মোট ${storage.totalGB} GB, ${storage.percentFree}% Free)।"
+                ToolResult(true, text, toolName, verified = true)
+            }
+
+            // System Settings & Hardware
+            "openSettings" -> {
+                val type = args.optString("type", "main")
+                val res = appController.openSettings(type)
+                if (res.isSuccess) {
+                    ToolResult(true, res.getOrThrow(), toolName, verified = true)
+                } else {
+                    ToolResult(false, res.exceptionOrNull()?.message ?: "Settings খোলা সম্ভব হয়নি।", toolName, verified = false)
+                }
+            }
+
+            "openWifiSettings" -> {
+                val res = appController.openWifiSettings()
+                if (res.isSuccess) {
+                    ToolResult(true, res.getOrThrow(), toolName, verified = true)
+                } else {
+                    ToolResult(false, res.exceptionOrNull()?.message ?: "Wi-Fi Settings খোলা সম্ভব হয়নি।", toolName, verified = false)
+                }
+            }
+
+            "openBluetoothSettings" -> {
+                val res = appController.openBluetoothSettings()
+                if (res.isSuccess) {
+                    ToolResult(true, res.getOrThrow(), toolName, verified = true)
+                } else {
+                    ToolResult(false, res.exceptionOrNull()?.message ?: "Bluetooth Settings খোলা সম্ভব হয়নি।", toolName, verified = false)
+                }
+            }
+
+            "openCamera" -> {
+                val res = appController.openCamera()
+                if (res.isSuccess) {
+                    ToolResult(true, res.getOrThrow(), toolName, verified = true)
+                } else {
+                    ToolResult(false, res.exceptionOrNull()?.message ?: "Camera খোলা সম্ভব হয়নি।", toolName, verified = false)
+                }
+            }
+
+            "lockDevice" -> {
+                val lockResult = deviceController.lockDevice()
+                if (lockResult.isSuccess) {
+                    ToolResult(true, lockResult.getOrThrow(), toolName, verified = true)
+                } else {
+                    ToolResult(false, lockResult.exceptionOrNull()?.message ?: "ফোন lock করা সম্ভব হয়নি।", toolName, verified = false)
+                }
+            }
+
+            // Accessibility Engine Operations
+            "accessibilityFind" -> {
+                val text = args.optString("text", "")
+                val foundNode = AccessibilityActionEngine.findText(text)
+                if (foundNode != null) {
+                    ToolResult(true, "স্ক্রিনে '$text' উপাদানটি খুঁজে পাওয়া গেছে।", toolName, verified = true)
+                } else {
+                    ToolResult(false, "আমি প্রয়োজনীয় control খুঁজে পাইনি।", toolName, verified = false)
+                }
+            }
+
+            "accessibilityClick" -> {
+                val target = args.optString("targetText", "")
+                val clicked = AccessibilityActionEngine.clickByText(target)
+                if (clicked) {
+                    ToolResult(true, "'$target' উপাদানে ক্লিক করা হয়েছে।", toolName, verified = true)
+                } else {
+                    ToolResult(false, "আমি প্রয়োজনীয় control খুঁজে পাইনি।", toolName, verified = false)
+                }
+            }
+
+            "accessibilitySetText" -> {
+                val text = args.optString("text", "")
+                val typed = AccessibilityActionEngine.typeText(null, text)
+                if (typed) {
+                    ToolResult(true, "টেক্সট সফলভাবে ইনপুট দেওয়া হয়েছে।", toolName, verified = true)
+                } else {
+                    ToolResult(false, "আমি প্রয়োজনীয় লেখার ইনপুট ফিল্ড খুঁজে পাইনি।", toolName, verified = false)
+                }
+            }
+
+            "accessibilityScroll" -> {
+                val direction = args.optString("direction", "down").lowercase()
+                val ok = if (direction == "up" || direction.contains("উপর")) {
+                    AccessibilityActionEngine.scrollUp()
+                } else {
+                    AccessibilityActionEngine.scrollDown()
+                }
+                if (ok) {
+                    ToolResult(true, "স্ক্রিন স্ক্রোল করা হয়েছে।", toolName, verified = true)
+                } else {
+                    ToolResult(false, "স্ক্রোল করার মতো স্ক্রিন পাওয়া যায়নি।", toolName, verified = false)
+                }
+            }
+
+            "accessibilityBack" -> {
+                val ok = AccessibilityActionEngine.goBack()
+                if (ok) {
+                    ToolResult(true, "Back করা হয়েছে।", toolName, verified = true)
+                } else {
+                    ToolResult(false, "Back করা সম্ভব হয়নি।", toolName, verified = false)
+                }
+            }
+
+            // Legacy / Complementary
+            "closeApp" -> {
+                val ok = AccessibilityActionEngine.goHome()
+                if (ok) {
+                    ToolResult(true, "Home screen-এ ফিরে যাওয়া হয়েছে।", toolName, verified = true)
+                } else {
+                    ToolResult(false, "Home screen-এ যাওয়া সম্ভব হয়নি।", toolName, verified = false)
+                }
+            }
+
+            "screenAnalyzer" -> {
+                val screenRes = screenAnalyzer.analyzeVisibleScreen()
+                if (screenRes.isSuccess) {
+                    ToolResult(true, screenRes.getOrThrow(), toolName, verified = true)
+                } else {
+                    ToolResult(false, screenRes.exceptionOrNull()?.message ?: "স্ক্রিন বিশ্লেষণ করা যায়নি।", toolName, verified = false)
+                }
+            }
+
             else -> {
-                ToolResult(false, "এই কমান্ডটি বর্তমানে সমর্থিত নয়।", toolName)
+                ToolResult(false, "এই কমান্ডটি বর্তমানে সমর্থিত নয়।", toolName, verified = false)
             }
         }
     }

@@ -8,214 +8,168 @@ object ToolDeclarations {
     fun getGeminiToolDeclarations(): JSONArray {
         val functionDeclarations = JSONArray()
 
-        // 1. openApp
-        functionDeclarations.put(JSONObject().apply {
-            put("name", "openApp")
-            put("description", "Opens an installed Android app on the phone such as WhatsApp, YouTube, Chrome, Camera, Settings, etc.")
-            put("parameters", JSONObject().apply {
-                put("type", "OBJECT")
-                put("properties", JSONObject().apply {
-                    put("appName", JSONObject().apply {
-                        put("type", "STRING")
-                        put("description", "Name of the app in English or Bangla (e.g. 'WhatsApp', 'YouTube', 'Chrome', 'Camera', 'হোয়াটসঅ্যাপ', 'সেটিংস')")
-                    })
+        fun addTool(name: String, description: String, required: List<String> = emptyList(), properties: Map<String, Pair<String, String>> = emptyMap()) {
+            val propsObj = JSONObject()
+            for ((propName, pair) in properties) {
+                val (type, desc) = pair
+                propsObj.put(propName, JSONObject().apply {
+                    put("type", type)
+                    put("description", desc)
                 })
-                put("required", JSONArray().put("appName"))
-            })
-        })
+            }
+            val reqArray = JSONArray()
+            required.forEach { reqArray.put(it) }
 
-        // 2. closeApp / goHome
-        functionDeclarations.put(JSONObject().apply {
-            put("name", "closeApp")
-            put("description", "Navigates back to the Android home screen or closes the current view.")
-            put("parameters", JSONObject().apply {
-                put("type", "OBJECT")
-                put("properties", JSONObject())
-            })
-        })
-
-        // 3. openWebsite
-        functionDeclarations.put(JSONObject().apply {
-            put("name", "openWebsite")
-            put("description", "Opens a URL or web search query in the browser (e.g. YouTube, Google, news).")
-            put("parameters", JSONObject().apply {
-                put("type", "OBJECT")
-                put("properties", JSONObject().apply {
-                    put("urlOrQuery", JSONObject().apply {
-                        put("type", "STRING")
-                        put("description", "The website URL or search term")
-                    })
-                })
-                put("required", JSONArray().put("urlOrQuery"))
-            })
-        })
-
-        // 4. getBatteryStatus
-        functionDeclarations.put(JSONObject().apply {
-            put("name", "getBatteryStatus")
-            put("description", "Retrieves real battery percentage, charging state, charger type, and temperature.")
-            put("parameters", JSONObject().apply {
-                put("type", "OBJECT")
-                put("properties", JSONObject())
-            })
-        })
-
-        // 5. getWifiStatus
-        functionDeclarations.put(JSONObject().apply {
-            put("name", "getWifiStatus")
-            put("description", "Checks Wi-Fi status, connected network SSID, and signal level.")
-            put("parameters", JSONObject().apply {
-                put("type", "OBJECT")
-                put("properties", JSONObject())
-            })
-        })
-
-        // 6. getNetworkStatus
-        functionDeclarations.put(JSONObject().apply {
-            put("name", "getNetworkStatus")
-            put("description", "Checks if phone has active internet connection and type (Wi-Fi or Mobile Cellular).")
-            put("parameters", JSONObject().apply {
-                put("type", "OBJECT")
-                put("properties", JSONObject())
-            })
-        })
-
-        // 7. getDeviceStatus
-        functionDeclarations.put(JSONObject().apply {
-            put("name", "getDeviceStatus")
-            put("description", "Gets full device information: brand, model, Android version, One UI version, and storage.")
-            put("parameters", JSONObject().apply {
-                put("type", "OBJECT")
-                put("properties", JSONObject())
-            })
-        })
-
-        // 8. volumeControl
-        functionDeclarations.put(JSONObject().apply {
-            put("name", "volumeControl")
-            put("description", "Controls device media volume: increase (up), decrease (down), mute, unmute, or set specific percentage.")
-            put("parameters", JSONObject().apply {
-                put("type", "OBJECT")
-                put("properties", JSONObject().apply {
-                    put("action", JSONObject().apply {
-                        put("type", "STRING")
-                        put("description", "Action to take: 'up', 'down', 'mute', 'unmute', 'set'")
-                    })
-                    put("percent", JSONObject().apply {
-                        put("type", "INTEGER")
-                        put("description", "Optional volume percentage 0 to 100 when action is 'set'")
-                    })
-                })
-                put("required", JSONArray().put("action"))
-            })
-        })
-
-        // 9. mediaControl
-        functionDeclarations.put(JSONObject().apply {
-            put("name", "mediaControl")
-            put("description", "Controls background media playback: play, pause, next song, previous song, stop.")
-            put("parameters", JSONObject().apply {
-                put("type", "OBJECT")
-                put("properties", JSONObject().apply {
-                    put("command", JSONObject().apply {
-                        put("type", "STRING")
-                        put("description", "Media command: 'play', 'pause', 'next', 'previous', 'stop'")
-                    })
-                })
-                put("required", JSONArray().put("command"))
-            })
-        })
-
-        // 10. lockDevice
-        functionDeclarations.put(JSONObject().apply {
-            put("name", "lockDevice")
-            put("description", "Locks the device screen natively using Android Accessibility Service.")
-            put("parameters", JSONObject().apply {
-                put("type", "OBJECT")
-                put("properties", JSONObject())
-            })
-        })
-
-        // 11. notificationReader
-        functionDeclarations.put(JSONObject().apply {
-            put("name", "notificationReader")
-            put("description", "Reads aloud recent unread notifications received by the device.")
-            put("parameters", JSONObject().apply {
-                put("type", "OBJECT")
-                put("properties", JSONObject().apply {
-                    put("limit", JSONObject().apply {
-                        put("type", "INTEGER")
-                        put("description", "Maximum number of notifications to read (default 3)")
-                    })
+            functionDeclarations.put(JSONObject().apply {
+                put("name", name)
+                put("description", description)
+                put("parameters", JSONObject().apply {
+                    put("type", "OBJECT")
+                    put("properties", propsObj)
+                    if (reqArray.length() > 0) {
+                        put("required", reqArray)
+                    }
                 })
             })
-        })
+        }
 
-        // 12. screenAnalyzer
-        functionDeclarations.put(JSONObject().apply {
-            put("name", "screenAnalyzer")
-            put("description", "Analyzes the visible text and buttons on screen using Accessibility Service.")
-            put("parameters", JSONObject().apply {
-                put("type", "OBJECT")
-                put("properties", JSONObject())
-            })
-        })
+        // Section 21 Tools:
+        // App Control
+        addTool(
+            "openApp",
+            "Opens an installed Android app on the phone by name (e.g. WhatsApp, YouTube, Chrome, Settings).",
+            listOf("appName"),
+            mapOf("appName" to Pair("STRING", "Name of the app (e.g. 'YouTube', 'WhatsApp', 'Chrome', 'Camera')"))
+        )
+        addTool(
+            "findApp",
+            "Checks if an app is installed and returns its package details.",
+            listOf("appName"),
+            mapOf("appName" to Pair("STRING", "App name to look for"))
+        )
+        addTool(
+            "focusApp",
+            "Brings an already running app to foreground focus.",
+            listOf("appName"),
+            mapOf("appName" to Pair("STRING", "App name to bring to foreground"))
+        )
 
-        // 13. findContact
-        functionDeclarations.put(JSONObject().apply {
-            put("name", "findContact")
-            put("description", "Searches device contacts by name for communication.")
-            put("parameters", JSONObject().apply {
-                put("type", "OBJECT")
-                put("properties", JSONObject().apply {
-                    put("name", JSONObject().apply {
-                        put("type", "STRING")
-                        put("description", "Name of the person (e.g. Rahim, Karim, Mom)")
-                    })
-                })
-                put("required", JSONArray().put("name"))
-            })
-        })
+        // YouTube Control
+        addTool(
+            "searchYouTube",
+            "Searches for a video or query on YouTube and displays results.",
+            listOf("query"),
+            mapOf("query" to Pair("STRING", "Search query or video title (e.g. 'Ronaldo', 'Messi vs Ronaldo')"))
+        )
+        addTool(
+            "playYouTubeVideo",
+            "Plays the requested video or matching search result on YouTube.",
+            listOf("videoTitle"),
+            mapOf("videoTitle" to Pair("STRING", "Title or description of the video to play"))
+        )
 
-        // 14. prepareMessage
-        functionDeclarations.put(JSONObject().apply {
-            put("name", "prepareMessage")
-            put("description", "Prepares a WhatsApp message and prompts the user for confirmation before sending. ALWAYS call this first when user wants to send a message.")
-            put("parameters", JSONObject().apply {
-                put("type", "OBJECT")
-                put("properties", JSONObject().apply {
-                    put("recipient", JSONObject().apply {
-                        put("type", "STRING")
-                        put("description", "Name or phone number of the recipient (e.g. 'Rahim')")
-                    })
-                    put("messageText", JSONObject().apply {
-                        put("type", "STRING")
-                        put("description", "Content of the message to be sent")
-                    })
-                    put("platform", JSONObject().apply {
-                        put("type", "STRING")
-                        put("description", "Messaging platform, default 'whatsapp'")
-                    })
-                })
-                put("required", JSONArray().put("recipient").put("messageText"))
-            })
-        })
+        // WhatsApp / Messaging
+        addTool(
+            "findContact",
+            "Searches device contacts by name.",
+            listOf("name"),
+            mapOf("name" to Pair("STRING", "Name of the contact to find"))
+        )
+        addTool(
+            "openWhatsAppConversation",
+            "Opens WhatsApp conversation directly for a given contact or number.",
+            listOf("contactName"),
+            mapOf(
+                "contactName" to Pair("STRING", "Contact name or phone number"),
+                "message" to Pair("STRING", "Optional draft message")
+            )
+        )
+        addTool(
+            "typeText",
+            "Types text into currently focused editable field or input box.",
+            listOf("text"),
+            mapOf("text" to Pair("STRING", "Text string to type into the field"))
+        )
+        addTool(
+            "prepareMessage",
+            "Prepares a WhatsApp message and prompts user confirmation. ALWAYS call this before sending consequential messages.",
+            listOf("recipient", "messageText"),
+            mapOf(
+                "recipient" to Pair("STRING", "Contact name or phone number"),
+                "messageText" to Pair("STRING", "Text message body")
+            )
+        )
+        addTool(
+            "sendMessage",
+            "Sends the prepared WhatsApp message after user approval.",
+            listOf("recipient", "messageText"),
+            mapOf(
+                "recipient" to Pair("STRING", "Contact name or phone number"),
+                "messageText" to Pair("STRING", "Text message body")
+            )
+        )
 
-        // 15. openConversation
-        functionDeclarations.put(JSONObject().apply {
-            put("name", "openConversation")
-            put("description", "Opens WhatsApp conversation directly for a contact.")
-            put("parameters", JSONObject().apply {
-                put("type", "OBJECT")
-                put("properties", JSONObject().apply {
-                    put("contactName", JSONObject().apply {
-                        put("type", "STRING")
-                        put("description", "Contact name or number")
-                    })
-                })
-                put("required", JSONArray().put("contactName"))
-            })
-        })
+        // Volume & Media
+        addTool(
+            "volumeControl",
+            "Controls device volume: increase (up), decrease (down), mute, unmute, or set percent.",
+            listOf("action"),
+            mapOf(
+                "action" to Pair("STRING", "Action: 'up', 'down', 'mute', 'unmute', 'set'"),
+                "percent" to Pair("INTEGER", "Volume percentage 0 to 100 when action is set")
+            )
+        )
+        addTool(
+            "mediaControl",
+            "Controls media playback: 'play', 'pause', 'next', 'previous', 'stop'.",
+            listOf("command"),
+            mapOf("command" to Pair("STRING", "Command: 'play', 'pause', 'next', 'previous', 'stop'"))
+        )
+
+        // Device Status
+        addTool("getBatteryStatus", "Returns real battery charge level, charging status, source, and temperature.")
+        addTool("getNetworkStatus", "Checks if device has active internet and connection type (Wi-Fi or Mobile Data).")
+        addTool("getWifiStatus", "Returns Wi-Fi status, connected network SSID, and signal quality.")
+        addTool("getStorageStatus", "Returns device internal storage total GB, free GB, and percentage free.")
+
+        // Settings & Hardware
+        addTool(
+            "openSettings",
+            "Opens device settings screen.",
+            emptyList(),
+            mapOf("type" to Pair("STRING", "Optional settings type: 'main', 'wifi', 'bluetooth', 'sound', 'display'"))
+        )
+        addTool("openWifiSettings", "Opens the system Wi-Fi settings page.")
+        addTool("openBluetoothSettings", "Opens the system Bluetooth settings page.")
+        addTool("openCamera", "Opens the device camera viewfinder.")
+        addTool("lockDevice", "Locks the phone screen securely via Accessibility service.")
+
+        // Accessibility Engine Tools
+        addTool(
+            "accessibilityFind",
+            "Finds visible text or interactive elements on current screen using Accessibility.",
+            listOf("text"),
+            mapOf("text" to Pair("STRING", "Text or description to look for on screen"))
+        )
+        addTool(
+            "accessibilityClick",
+            "Clicks a visible element on screen matching the given text or description.",
+            listOf("targetText"),
+            mapOf("targetText" to Pair("STRING", "Text or content description of element to click"))
+        )
+        addTool(
+            "accessibilitySetText",
+            "Enters text into currently active or matching editable field.",
+            listOf("text"),
+            mapOf("text" to Pair("STRING", "Text to insert"))
+        )
+        addTool(
+            "accessibilityScroll",
+            "Scrolls the current screen container up or down.",
+            listOf("direction"),
+            mapOf("direction" to Pair("STRING", "'up' or 'down'"))
+        )
+        addTool("accessibilityBack", "Executes real Android Back action via Accessibility.")
 
         return JSONArray().put(JSONObject().put("functionDeclarations", functionDeclarations))
     }

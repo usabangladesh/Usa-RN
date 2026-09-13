@@ -14,16 +14,21 @@ import java.util.concurrent.TimeUnit
 
 class GeminiLiveClient {
 
+    companion object {
+        @Volatile
+        var runtimeApiKeyOverride: String? = null
+    }
+
     private val client = OkHttpClient.Builder()
-        .connectTimeout(60, TimeUnit.SECONDS)
-        .readTimeout(60, TimeUnit.SECONDS)
-        .writeTimeout(60, TimeUnit.SECONDS)
+        .connectTimeout(30, TimeUnit.SECONDS)
+        .readTimeout(30, TimeUnit.SECONDS)
+        .writeTimeout(30, TimeUnit.SECONDS)
         .build()
 
-    // Model selection prioritizing prompt requirements
+    // Gemini Live model as requested: gemini-3.1-flash-live-preview
     private val preferredModel = "gemini-3.1-flash-live-preview"
     private val fallbackModel = "gemini-2.5-flash-native-audio-preview-12-2025"
-    private val standardModel = "gemini-3.5-flash"
+    private val standardModel = "gemini-2.5-flash"
 
     private val conversationHistory = mutableListOf<JSONObject>()
 
@@ -49,14 +54,22 @@ class GeminiLiveClient {
         conversationHistory.clear()
     }
 
+    private fun getEffectiveApiKey(): String {
+        val override = runtimeApiKeyOverride?.trim()
+        if (!override.isNullOrBlank()) {
+            return override
+        }
+        return BuildConfig.GEMINI_API_KEY.trim()
+    }
+
     suspend fun sendVoiceQuery(userText: String, memoryContext: String? = null): GeminiResponse = withContext(Dispatchers.IO) {
-        val apiKey = BuildConfig.GEMINI_API_KEY
+        val apiKey = getEffectiveApiKey()
 
         if (apiKey.isBlank() || apiKey == "MY_GEMINI_API_KEY" || apiKey == "DEFAULT_API_KEY") {
             return@withContext GeminiResponse(
                 text = null,
                 functionCalls = emptyList(),
-                error = "Gemini API key is not configured in Secrets."
+                error = "Gemini connection-এর জন্য API configuration ঠিক করা হয়নি।"
             )
         }
 
@@ -109,8 +122,16 @@ class GeminiLiveClient {
 
                 client.newCall(httpRequest).execute().use { response ->
                     val bodyString = response.body?.string() ?: ""
+                    if (response.code in 400..403) {
+                        return@withContext GeminiResponse(
+                            text = null,
+                            functionCalls = emptyList(),
+                            error = "Gemini connection করা যাচ্ছে না। API configuration যাচাই করুন।"
+                        )
+                    }
+
                     if (!response.isSuccessful) {
-                        lastError = "Model $model returned HTTP ${response.code}: $bodyString"
+                        lastError = "Gemini connection করা যাচ্ছে না। API configuration যাচাই করুন।"
                         return@use // try next model
                     }
 
@@ -154,18 +175,18 @@ class GeminiLiveClient {
                             functionCalls = functionCalls
                         )
                     } else {
-                        lastError = "No candidate returned from Gemini"
+                        lastError = "Gemini থেকে কোনো প্রতিক্রিয়া পাওয়া যায়নি।"
                     }
                 }
             } catch (e: Exception) {
-                lastError = e.localizedMessage
+                lastError = "Gemini connection করা যাচ্ছে না। API configuration যাচাই করুন।"
             }
         }
 
         return@withContext GeminiResponse(
             text = null,
             functionCalls = emptyList(),
-            error = lastError ?: "Failed to connect to Gemini Live."
+            error = lastError ?: "Gemini connection করা যাচ্ছে না। API configuration যাচাই করুন।"
         )
     }
 }

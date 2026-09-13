@@ -51,6 +51,35 @@ class AppController(private val context: Context) {
         "प्ले स्टोर" to "com.android.vending"
     )
 
+    fun findApp(appName: String): String? {
+        val normalized = appName.trim().lowercase()
+        for ((key, pkg) in knownAppPackages) {
+            if (normalized.contains(key)) return pkg
+        }
+        val found = findPackageByLabel(normalized)
+        if (found != null) return found
+        if (normalized.contains(".") && isPackageInstalledInternal(normalized)) return normalized
+        return null
+    }
+
+    fun isAppInstalled(packageNameOrName: String): Boolean {
+        val targetPkg = findApp(packageNameOrName) ?: packageNameOrName
+        return isPackageInstalledInternal(targetPkg)
+    }
+
+    private fun isPackageInstalledInternal(packageName: String): Boolean {
+        return try {
+            packageManager.getPackageInfo(packageName, 0)
+            true
+        } catch (_: PackageManager.NameNotFoundException) {
+            false
+        }
+    }
+
+    fun focusApp(appName: String): Result<String> {
+        return openApp(appName)
+    }
+
     fun openApp(appName: String): Result<String> {
         val normalized = appName.trim().lowercase()
 
@@ -60,42 +89,20 @@ class AppController(private val context: Context) {
         }
         if (normalized.contains("setting") || normalized.contains("সেটিংস") || normalized.contains("সেটিং") || normalized.contains("सेटिंग")) {
             if (normalized.contains("bluetooth") || normalized.contains("ব্লুটুথ")) {
-                return openSettings("bluetooth")
+                return openBluetoothSettings()
             }
             if (normalized.contains("wifi") || normalized.contains("ওয়াইফাই") || normalized.contains("ওয়াইফাই")) {
-                return openSettings("wifi")
+                return openWifiSettings()
             }
             return openSettings("main")
         }
 
-        // 2. Resolve package from known map
-        var targetPackage: String? = null
-        for ((key, pkg) in knownAppPackages) {
-            if (normalized.contains(key)) {
-                targetPackage = pkg
-                break
-            }
-        }
+        // 2. Resolve package
+        val targetPackage = findApp(normalized)
 
-        // 3. If not in known list, search installed applications by label
-        if (targetPackage == null) {
-            targetPackage = findPackageByLabel(normalized)
-        }
-
-        if (targetPackage == null) {
-            // If the user directly passed a package name (e.g. com.example)
-            if (normalized.contains(".") && isPackageInstalled(normalized)) {
-                targetPackage = normalized
-            }
-        }
-
-        if (targetPackage == null) {
-            return Result.failure(Exception("$appName ইনস্টল করা নেই বা খুঁজে পাওয়া যায়নি (App not found)."))
-        }
-
-        if (!isPackageInstalled(targetPackage)) {
+        if (targetPackage == null || !isPackageInstalledInternal(targetPackage)) {
             val displayTitle = appName.replaceFirstChar { it.uppercase() }
-            return Result.failure(Exception("$displayTitle install করা নেই। তাই আমি এটি খুলতে পারিনি।"))
+            return Result.failure(Exception("$displayTitle ফোনে install করা নেই।"))
         }
 
         val launchIntent = packageManager.getLaunchIntentForPackage(targetPackage)
@@ -103,22 +110,69 @@ class AppController(private val context: Context) {
             launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
             try {
                 context.startActivity(launchIntent)
-                Result.success("ঠিক আছে, $appName খুলে দিয়েছি।")
+                Result.success("ঠিক আছে, $appName খুলে দেওয়া হয়েছে।")
             } catch (e: Exception) {
-                Result.failure(Exception("$appName খোলার সময় সমস্যা হয়েছে: ${e.localizedMessage}"))
+                Result.failure(Exception("$appName খোলার সময় সমস্যা হয়েছে: ${e.localizedMessage}"))
             }
         } else {
             Result.failure(Exception("$appName এর জন্য কোনো launch intent পাওয়া যায়নি।"))
         }
     }
 
-    private fun isPackageInstalled(packageName: String): Boolean {
-        return try {
-            packageManager.getPackageInfo(packageName, 0)
-            true
-        } catch (_: PackageManager.NameNotFoundException) {
-            false
+    fun searchYouTube(query: String): Result<String> {
+        val encoded = URLEncoder.encode(query, "UTF-8")
+        val ytPackage = "com.google.android.youtube"
+        val isYtInstalled = isPackageInstalledInternal(ytPackage)
+
+        val intent = if (isYtInstalled) {
+            Intent(Intent.ACTION_SEARCH).apply {
+                `package` = ytPackage
+                putExtra("query", query)
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            }
+        } else {
+            Intent(Intent.ACTION_VIEW, Uri.parse("https://www.youtube.com/results?search_query=$encoded")).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            }
         }
+
+        return try {
+            context.startActivity(intent)
+            Result.success("YouTube-এ \"$query\" অনুসন্ধান করা হচ্ছে।")
+        } catch (e: Exception) {
+            // Fallback via web view URL
+            try {
+                val webIntent = Intent(Intent.ACTION_VIEW, Uri.parse("https://www.youtube.com/results?search_query=$encoded")).apply {
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                }
+                context.startActivity(webIntent)
+                Result.success("YouTube-এ \"$query\" অনুসন্ধান করা হচ্ছে।")
+            } catch (e2: Exception) {
+                Result.failure(Exception("YouTube-এ অনুসন্ধান করা সম্ভব হয়নি: ${e2.localizedMessage}"))
+            }
+        }
+    }
+
+    fun playYouTubeVideo(videoQuery: String): Result<String> {
+        // First try searching/opening YouTube
+        val res = searchYouTube(videoQuery)
+        if (res.isFailure) return res
+
+        // If Accessibility service is active, attempt to click visible matching video
+        val clicked = com.example.accessibility.AccessibilityActionEngine.clickMatchingVideo(videoQuery)
+        return if (clicked) {
+            Result.success("\"$videoQuery\" ভিডিওটি চালু করা হয়েছে।")
+        } else {
+            Result.success("YouTube-এ \"$videoQuery\" এর ফলাফল প্রদর্শিত হয়েছে।")
+        }
+    }
+
+    fun openWifiSettings(): Result<String> = openSettings("wifi")
+
+    fun openBluetoothSettings(): Result<String> = openSettings("bluetooth")
+
+    fun sendMessage(recipient: String, messageText: String): Result<String> {
+        return openWhatsAppConversation(recipient, messageText)
     }
 
     private fun findPackageByLabel(query: String): String? {
@@ -226,7 +280,7 @@ class AppController(private val context: Context) {
     }
 
     fun openWhatsAppConversation(recipient: String, messageText: String? = null): Result<String> {
-        if (!isPackageInstalled("com.whatsapp")) {
+        if (!isPackageInstalledInternal("com.whatsapp")) {
             return Result.failure(Exception("WhatsApp install করা নেই। তাই মেসেজ পাঠানো সম্ভব নয়।"))
         }
 

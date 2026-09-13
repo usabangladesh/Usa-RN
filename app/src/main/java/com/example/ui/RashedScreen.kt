@@ -40,6 +40,7 @@ import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Face
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.Button
@@ -116,6 +117,7 @@ fun RashedScreen(
 
     val memories by memoryManager.getAllMemoriesFlow().collectAsState(initial = emptyList())
     var isMemorySheetOpen by remember { mutableStateOf(false) }
+    var isApiKeyDialogOpen by remember { mutableStateOf(false) }
     var isCharacterMode by remember { mutableStateOf(true) }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
@@ -193,11 +195,27 @@ fun RashedScreen(
                         )
                     }
 
-                    // Action Icons: Memory Drawer & Emergency Stop
+                    // Action Icons: API Key Settings, Memory Drawer & Emergency Stop
                     Row(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
+                        // API Key Configuration Button
+                        IconButton(
+                            onClick = { isApiKeyDialogOpen = true },
+                            modifier = Modifier
+                                .size(42.dp)
+                                .background(DarkSurfaceElevated, CircleShape)
+                                .testTag("api_key_settings_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Key,
+                                contentDescription = "Gemini API Key Settings",
+                                tint = CyanNeon,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+
                         // Memory Button
                         IconButton(
                             onClick = { isMemorySheetOpen = true },
@@ -485,7 +503,18 @@ fun RashedScreen(
             onToggleMemoryEnabled = { enabled -> memoryManager.isMemoryEnabled = enabled },
             onDeleteMemory = { id -> scope.launch { memoryManager.deleteMemory(id) } },
             onClearAll = { scope.launch { memoryManager.clearAll() } },
+            onOpenApiKeyConfig = {
+                isMemorySheetOpen = false
+                isApiKeyDialogOpen = true
+            },
             onDismiss = { isMemorySheetOpen = false }
+        )
+    }
+
+    // Gemini API Key Config Dialog
+    if (isApiKeyDialogOpen) {
+        ApiKeyConfigDialog(
+            onDismiss = { isApiKeyDialogOpen = false }
         )
     }
 }

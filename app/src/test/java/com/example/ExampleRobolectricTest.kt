@@ -128,4 +128,18 @@ class ExampleRobolectricTest {
         val isBlocked = sec.isRestricted("extractPassword", "what is my password")
         assertTrue(isBlocked)
     }
+
+    @Test
+    fun `ApiKeyManager saves retrieves and masks API key`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val testKey = "AQ.TestCustomKey1234567890XYZ"
+        com.example.gemini.ApiKeyManager.saveCustomApiKey(context, testKey)
+
+        assertTrue(com.example.gemini.ApiKeyManager.isConfigured(context))
+        assertEquals(testKey, com.example.gemini.ApiKeyManager.getActiveApiKey(context))
+        assertTrue(com.example.gemini.ApiKeyManager.getMaskedKey(context).startsWith("AQ.Tes..."))
+
+        com.example.gemini.ApiKeyManager.clearCustomApiKey(context)
+        assertEquals(null, com.example.gemini.ApiKeyManager.getCustomApiKey(context))
+    }
 }

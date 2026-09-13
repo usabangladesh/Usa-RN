@@ -44,6 +44,7 @@ class MainActivity : ComponentActivity() {
 
         permissionManager = PermissionManager(this)
         memoryManager = MemoryManager(this)
+        com.example.gemini.ApiKeyManager.init(this)
 
         val appController = AppController(this)
         val deviceController = DeviceController(this)

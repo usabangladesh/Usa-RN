@@ -42,6 +42,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.memory.MemoryEntity
+import com.example.ui.theme.AmberAlert
 import com.example.ui.theme.CrimsonStop
 import com.example.ui.theme.CyanNeon
 import com.example.ui.theme.DarkCanvas
@@ -55,6 +56,10 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+import androidx.compose.material.icons.filled.Key
+import com.example.gemini.ApiKeyManager
+import androidx.compose.ui.platform.LocalContext
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MemorySheet(
@@ -64,8 +69,10 @@ fun MemorySheet(
     onToggleMemoryEnabled: (Boolean) -> Unit,
     onDeleteMemory: (Long) -> Unit,
     onClearAll: () -> Unit,
+    onOpenApiKeyConfig: () -> Unit = {},
     onDismiss: () -> Unit
 ) {
+    val context = LocalContext.current
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
@@ -144,6 +151,74 @@ fun MemorySheet(
                         color = TextSecondary,
                         lineHeight = 16.sp
                     )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // Gemini API Key Config Card
+            val isConfigured = ApiKeyManager.isConfigured(context)
+            val maskedKey = ApiKeyManager.getMaskedKey(context)
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("memory_sheet_api_key_card"),
+                colors = CardDefaults.cardColors(containerColor = DarkSurfaceElevated),
+                shape = RoundedCornerShape(12.dp),
+                border = BorderStroke(1.dp, CyanNeon.copy(alpha = 0.25f))
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(14.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        modifier = Modifier.weight(1f),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(34.dp)
+                                .background(CyanNeon.copy(alpha = 0.15f), CircleShape),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Key,
+                                contentDescription = null,
+                                tint = CyanNeon,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column {
+                            Text(
+                                text = "Gemini API Key",
+                                color = TextPrimary,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(
+                                text = if (isConfigured) "সক্রিয় ($maskedKey)" else "কী প্রয়োজন (Tap to configure)",
+                                color = if (isConfigured) EmeraldGlow else AmberAlert,
+                                fontSize = 12.sp
+                            )
+                        }
+                    }
+
+                    OutlinedButton(
+                        onClick = onOpenApiKeyConfig,
+                        border = BorderStroke(1.dp, CyanNeon.copy(alpha = 0.5f)),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = CyanNeon),
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                    ) {
+                        Text(
+                            text = if (isConfigured) "পরিবর্তন" else "সেট করুন",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
                 }
             }
 

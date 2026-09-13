@@ -108,7 +108,7 @@ class GeminiLiveClient {
             })
         }
 
-        val modelsToTry = listOf(preferredModel, fallbackModel, standardModel)
+        val modelsToTry = listOf(preferredModel, fallbackModel, standardModel, "gemini-2.0-flash")
         var lastError: String? = null
 
         for (model in modelsToTry) {
@@ -117,22 +117,20 @@ class GeminiLiveClient {
                 val requestBody = requestJson.toString().toRequestBody("application/json; charset=utf-8".toMediaType())
                 val httpRequest = Request.Builder()
                     .url(url)
+                    .addHeader("x-goog-api-key", apiKey)
                     .post(requestBody)
                     .build()
 
                 client.newCall(httpRequest).execute().use { response ->
                     val bodyString = response.body?.string() ?: ""
-                    if (response.code in 400..403) {
-                        return@withContext GeminiResponse(
-                            text = null,
-                            functionCalls = emptyList(),
-                            error = "Gemini connection করা যাচ্ছে না। API configuration যাচাই করুন।"
-                        )
-                    }
-
                     if (!response.isSuccessful) {
-                        lastError = "Gemini connection করা যাচ্ছে না। API configuration যাচাই করুন।"
-                        return@use // try next model
+                        val errMsg = try {
+                            JSONObject(bodyString).optJSONObject("error")?.optString("message")
+                        } catch (_: Exception) {
+                            null
+                        }
+                        lastError = errMsg ?: "Gemini API error (code ${response.code})"
+                        return@use // try next model in list
                     }
 
                     val json = JSONObject(bodyString)

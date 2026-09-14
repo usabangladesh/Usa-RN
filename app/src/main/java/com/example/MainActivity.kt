@@ -63,12 +63,29 @@ class MainActivity : ComponentActivity() {
             securityManager = securityManager
         )
 
+        val whatsAppController = com.example.apps.WhatsAppController(this, appController)
+        val youTubeController = com.example.apps.YouTubeController(this, appController)
+        val facebookController = com.example.apps.FacebookController(this, appController)
+        val tiktokController = com.example.apps.TikTokController(this, appController)
+        val genericAppController = com.example.apps.GenericAppController(this, appController)
+
+        val universalAppControlEngine = com.example.apps.UniversalAppControlEngine(
+            context = this,
+            appController = appController,
+            whatsAppController = whatsAppController,
+            youTubeController = youTubeController,
+            facebookController = facebookController,
+            tiktokController = tiktokController,
+            genericAppController = genericAppController
+        )
+
         assistantEngine = RashedAssistantEngine(
             context = this,
             toolDispatcher = toolDispatcher,
             confirmationManager = confirmationManager,
             memoryManager = memoryManager,
-            permissionManager = permissionManager
+            permissionManager = permissionManager,
+            universalAppControlEngine = universalAppControlEngine
         )
 
         requestRequiredPermissions()

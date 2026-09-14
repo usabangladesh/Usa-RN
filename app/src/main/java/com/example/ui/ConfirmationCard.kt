@@ -75,7 +75,7 @@ fun ConfirmationCard(
                 )
                 Spacer(modifier = Modifier.width(10.dp))
                 Text(
-                    text = "নিশ্চিতকরণ প্রয়োজন (Confirmation Required)",
+                    text = "Confirmation Required",
                     color = AmberAlert,
                     fontSize = 15.sp,
                     fontWeight = FontWeight.Bold
@@ -104,7 +104,7 @@ fun ConfirmationCard(
                 ) {
                     if (!confirmation.recipient.isNullOrBlank()) {
                         Text(
-                            text = "প্রাপক: ${confirmation.recipient}",
+                            text = "Recipient: ${confirmation.recipient}",
                             color = CyanNeon,
                             fontSize = 13.sp,
                             fontWeight = FontWeight.Medium
@@ -113,7 +113,7 @@ fun ConfirmationCard(
                     if (!confirmation.content.isNullOrBlank()) {
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            text = "মেসেজ: \"${confirmation.content}\"",
+                            text = "Content: \"${confirmation.content}\"",
                             color = TextSecondary,
                             fontSize = 13.sp
                         )
@@ -125,7 +125,7 @@ fun ConfirmationCard(
 
             // Voice command hint
             Text(
-                text = "ভয়েসে বলুন: 'হ্যাঁ' / 'Send' অথবা 'না' / 'Cancel'",
+                text = "Say: 'Yes', 'Confirm', 'Do it' or 'No', 'Cancel'",
                 color = TextSecondary,
                 fontSize = 12.sp
             )
@@ -155,7 +155,7 @@ fun ConfirmationCard(
                         modifier = Modifier.size(18.dp)
                     )
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text("বাতিল (Cancel)")
+                    Text("Cancel")
                 }
 
                 Button(
@@ -176,7 +176,7 @@ fun ConfirmationCard(
                         modifier = Modifier.size(18.dp)
                     )
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text("পাঠাও (Send)", fontWeight = FontWeight.Bold)
+                    Text("Confirm", fontWeight = FontWeight.Bold)
                 }
             }
         }

@@ -22,6 +22,6 @@ dependencyResolutionManagement {
   }
 }
 
-rootProject.name = "Rashed AI"
+rootProject.name = "Mahi AI"
 
 include(":app")

@@ -13,11 +13,11 @@ import android.view.accessibility.AccessibilityNodeInfo
  */
 object AccessibilityActionEngine {
 
-    private fun getService(): RashedAccessibilityService? = RashedAccessibilityService.instance
+    private fun getService(): JarvisAccessibilityService? = JarvisAccessibilityService.instance ?: RashedAccessibilityService.instance
 
     private fun getRootNode(): AccessibilityNodeInfo? = getService()?.rootInActiveWindow
 
-    fun isServiceActive(): Boolean = RashedAccessibilityService.isRunning()
+    fun isServiceActive(): Boolean = JarvisAccessibilityService.isRunning() || RashedAccessibilityService.isRunning()
 
     fun goBack(): Boolean {
         return getService()?.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK) ?: false

@@ -95,6 +95,7 @@ class AudioEngine(
         }
 
         stopSpeaking()
+        stopListeningForVoiceCommand()
         currentOnComplete = onComplete
 
         // Select optimal language voice for Bengali priority

@@ -13,7 +13,7 @@ class ScreenAnalyzer(private val context: Context) {
             )
         }
 
-        val extractedText = service.extractScreenText()
+        val extractedText = service.extractScreenHierarchyText().joinToString("\n")
         return Result.success(
             "Current Screen UI Content:\n$extractedText"
         )

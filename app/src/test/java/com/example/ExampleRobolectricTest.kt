@@ -157,4 +157,100 @@ class ExampleRobolectricTest {
         assertTrue(thanks is ParsedIntent.DirectSpeech)
         assertTrue((thanks as ParsedIntent.DirectSpeech).message.contains("ধন্যবাদ"))
     }
+
+    @Test
+    fun `Universal App Commands route accurately in Bangla, Banglish and English`() {
+        // App launches
+        val wa = IntentRouter.parseUserCommand("WhatsApp খোলো")
+        assertTrue(wa is ParsedIntent.UniversalCommand)
+
+        val yt = IntentRouter.parseUserCommand("YouTube খোলো")
+        assertTrue(yt is ParsedIntent.UniversalCommand)
+
+        val fb = IntentRouter.parseUserCommand("Facebook খোলো")
+        assertTrue(fb is ParsedIntent.UniversalCommand)
+
+        val chat = IntentRouter.parseUserCommand("Rahim-এর chat খোলো")
+        assertTrue(chat is ParsedIntent.UniversalCommand)
+
+        val chatBanglish = IntentRouter.parseUserCommand("Rahim er chat kholo")
+        assertTrue(chatBanglish is ParsedIntent.UniversalCommand)
+
+        // In-app actions
+        val search = IntentRouter.parseUserCommand("Search অপশন খোলো")
+        assertTrue(search is ParsedIntent.UniversalCommand)
+
+        val ronaldoSearch = IntentRouter.parseUserCommand("Ronaldo লিখে search করো")
+        assertTrue(ronaldoSearch is ParsedIntent.UniversalCommand)
+
+        val searchBanglish = IntentRouter.parseUserCommand("Search koro Ronaldo")
+        assertTrue(searchBanglish is ParsedIntent.UniversalCommand)
+
+        val scrollDown = IntentRouter.parseUserCommand("নিচে যাও")
+        assertTrue(scrollDown is ParsedIntent.UniversalCommand)
+
+        val scrollUp = IntentRouter.parseUserCommand("উপরে যাও")
+        assertTrue(scrollUp is ParsedIntent.UniversalCommand)
+
+        val scrollEn = IntentRouter.parseUserCommand("Scroll down")
+        assertTrue(scrollEn is ParsedIntent.UniversalCommand)
+
+        val back = IntentRouter.parseUserCommand("Back করো")
+        assertTrue(back is ParsedIntent.UniversalCommand)
+
+        val backPage = IntentRouter.parseUserCommand("আগের পেজে যাও")
+        assertTrue(backPage is ParsedIntent.UniversalCommand)
+
+        val goBackEn = IntentRouter.parseUserCommand("Go back")
+        assertTrue(goBackEn is ParsedIntent.UniversalCommand)
+
+        val openThis = IntentRouter.parseUserCommand("এটা open করো")
+        assertTrue(openThis is ParsedIntent.UniversalCommand)
+
+        val clickThis = IntentRouter.parseUserCommand("এইটা click করো")
+        assertTrue(clickThis is ParsedIntent.UniversalCommand)
+
+        val typeHere = IntentRouter.parseUserCommand("এখানে টাইপ করো")
+        assertTrue(typeHere is ParsedIntent.UniversalCommand)
+
+        val typeText = IntentRouter.parseUserCommand("টাইপ করো: আমি এখন আসছি")
+        assertTrue(typeText is ParsedIntent.UniversalCommand)
+
+        val typeBanglish = IntentRouter.parseUserCommand("Type koro ami aschi")
+        assertTrue(typeBanglish is ParsedIntent.UniversalCommand)
+
+        // Multi-step compound command
+        val compound1 = IntentRouter.parseUserCommand("WhatsApp খোলো, Rahim-এর chat খোলো এবং টাইপ করো আমি আসছি")
+        assertTrue(compound1 is ParsedIntent.UniversalCommand)
+
+        val compound2 = IntentRouter.parseUserCommand("YouTube খোলো এবং Ronaldo search করো")
+        assertTrue(compound2 is ParsedIntent.UniversalCommand)
+    }
+
+    @Test
+    fun `Stop and Cancel keywords halt execution immediately`() {
+        val stop1 = IntentRouter.parseUserCommand("থামো")
+        assertEquals(ParsedIntent.EmergencyStop, stop1)
+
+        val stop2 = IntentRouter.parseUserCommand("বন্ধ হও")
+        assertEquals(ParsedIntent.EmergencyStop, stop2)
+
+        val stop3 = IntentRouter.parseUserCommand("Listening বন্ধ করো")
+        assertEquals(ParsedIntent.EmergencyStop, stop3)
+
+        val stop4 = IntentRouter.parseUserCommand("Stop")
+        assertEquals(ParsedIntent.EmergencyStop, stop4)
+    }
+
+    @Test
+    fun `Confirmation and send keywords parse as UserConfirmed`() {
+        val yes = IntentRouter.parseUserCommand("হ্যাঁ")
+        assertEquals(ParsedIntent.UserConfirmed, yes)
+
+        val send = IntentRouter.parseUserCommand("পাঠাও")
+        assertEquals(ParsedIntent.UserConfirmed, send)
+
+        val sendEn = IntentRouter.parseUserCommand("send")
+        assertEquals(ParsedIntent.UserConfirmed, sendEn)
+    }
 }

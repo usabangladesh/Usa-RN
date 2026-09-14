@@ -153,6 +153,49 @@ class AppController(private val context: Context) {
         }
     }
 
+    fun openWebsite(rawUrl: String): Result<String> {
+        val trimmed = rawUrl.trim()
+        if (trimmed.isBlank()) {
+            return Result.failure(Exception("Website URL cannot be blank."))
+        }
+        val targetUrl = if (!trimmed.startsWith("http://") && !trimmed.startsWith("https://")) {
+            if (trimmed.contains(".") && !trimmed.contains(" ")) {
+                "https://$trimmed"
+            } else {
+                "https://www.google.com/search?q=" + URLEncoder.encode(trimmed, "UTF-8")
+            }
+        } else {
+            trimmed
+        }
+
+        return try {
+            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(targetUrl)).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            }
+            context.startActivity(intent)
+            Result.success("Opened $targetUrl in your browser!")
+        } catch (e: Exception) {
+            Result.failure(Exception("Could not open website: ${e.localizedMessage}"))
+        }
+    }
+
+    fun searchWeb(query: String): Result<String> {
+        val trimmed = query.trim()
+        if (trimmed.isBlank()) {
+            return Result.failure(Exception("Search query cannot be empty."))
+        }
+        return try {
+            val encoded = URLEncoder.encode(trimmed, "UTF-8")
+            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://www.google.com/search?q=$encoded")).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            }
+            context.startActivity(intent)
+            Result.success("Searching for \"$trimmed\" on the web.")
+        } catch (e: Exception) {
+            Result.failure(Exception("Could not perform web search: ${e.localizedMessage}"))
+        }
+    }
+
     fun playYouTubeVideo(videoQuery: String): Result<String> {
         // First try searching/opening YouTube
         val res = searchYouTube(videoQuery)
@@ -187,27 +230,6 @@ class AppController(private val context: Context) {
             }
         }
         return null
-    }
-
-    fun openWebsite(urlOrQuery: String): Result<String> {
-        var cleanUrl = urlOrQuery.trim()
-        if (!cleanUrl.startsWith("http://") && !cleanUrl.startsWith("https://")) {
-            cleanUrl = if (cleanUrl.contains(".") && !cleanUrl.contains(" ")) {
-                "https://$cleanUrl"
-            } else {
-                "https://www.google.com/search?q=" + URLEncoder.encode(cleanUrl, "UTF-8")
-            }
-        }
-
-        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(cleanUrl)).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK
-        }
-        return try {
-            context.startActivity(intent)
-            Result.success("Browser-এ $cleanUrl খুলে দেওয়া হয়েছে।")
-        } catch (e: Exception) {
-            Result.failure(Exception("ব্রাউজার খুলতে ব্যর্থ হয়েছে: ${e.localizedMessage}"))
-        }
     }
 
     fun openSettings(type: String): Result<String> {

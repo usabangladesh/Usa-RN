@@ -49,7 +49,7 @@ class PermissionManager(private val context: Context) {
                 return true
             }
         }
-        return RashedAccessibilityService.instance != null
+        return RashedAccessibilityService.instance != null || com.example.accessibility.JarvisAccessibilityService.instance != null
     }
 
     fun isNotificationListenerEnabled(): Boolean {

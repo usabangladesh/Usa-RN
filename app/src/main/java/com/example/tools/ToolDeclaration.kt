@@ -34,6 +34,20 @@ object ToolDeclarations {
         }
 
         // Section 21 Tools:
+        // Browser & Web Actions
+        addTool(
+            "openWebsite",
+            "Opens a website URL in the device web browser (e.g. 'https://google.com', 'youtube.com', 'x.com', 'github.com').",
+            listOf("url"),
+            mapOf("url" to Pair("STRING", "Website address, domain, or URL to open in browser"))
+        )
+        addTool(
+            "searchWeb",
+            "Executes an instant web search for the given query and shows the browser search page.",
+            listOf("query"),
+            mapOf("query" to Pair("STRING", "Search terms or query to find online"))
+        )
+
         // App Control
         addTool(
             "openApp",

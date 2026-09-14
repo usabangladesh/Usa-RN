@@ -5,6 +5,7 @@ import org.json.JSONObject
 sealed class ParsedIntent {
     data class DirectTool(val toolName: String, val args: JSONObject) : ParsedIntent()
     data class DirectSpeech(val message: String) : ParsedIntent()
+    data class UniversalCommand(val command: String) : ParsedIntent()
     object EmergencyStop : ParsedIntent()
     object UserConfirmed : ParsedIntent()
     object UserCancelled : ParsedIntent()
@@ -17,13 +18,13 @@ object IntentRouter {
         val text = input.trim()
         val lower = text.lowercase()
 
-        // 1. Emergency stop check (Section 20 & 34)
-        val stopKeywords = listOf("থামো", "থামাও", "চুপ করো", "stop", "halt", "ruko", "band karo")
+        // 1. Emergency stop & Cancel check (Section 20 & 27)
+        val stopKeywords = listOf("থামো", "থামাও", "চুপ করো", "stop", "halt", "ruko", "band karo", "বন্ধ হও", "listening বন্ধ করো", "listening বন্ধ")
         if (stopKeywords.any { lower == it || lower.startsWith("$it ") || lower.endsWith(" $it") || lower.contains("রশিদ থামো") || lower.contains("rashed থামো") }) {
             return ParsedIntent.EmergencyStop
         }
 
-        // 2. Confirmation check (Section 9)
+        // 2. Confirmation check (Section 22)
         val confirmKeywords = listOf("হ্যাঁ", "হ্যা", "পাঠাও", "করো", "send", "yes", "yep", "sure", "ok", "হুম", "ঠিক আছে", "भेजो", "हाँ")
         if (confirmKeywords.any { lower == it || lower.startsWith("$it ") }) {
             return ParsedIntent.UserConfirmed
@@ -35,15 +36,32 @@ object IntentRouter {
             return ParsedIntent.UserCancelled
         }
 
-        // 4. Back navigation (Section 16, Test 3)
-        if (lower.contains("back") || lower.contains("আগের পাতা") || lower.contains("পিছনে যাও") || lower.contains("পিছে যাও") || lower.contains("ফিরে যাও")) {
-            return ParsedIntent.DirectTool("accessibilityBack", JSONObject())
+        // 4. Multi-step compound commands (Section 18 & 19)
+        val isCompound = lower.contains(" এবং ") || lower.contains(" তারপর ") || lower.contains(" then ") ||
+                (lower.contains(",") && (lower.contains("খোলো") || lower.contains("chat") || lower.contains("টাইপ") || lower.contains("search")))
+        if (isCompound) {
+            return ParsedIntent.UniversalCommand(text)
         }
 
-        // 5. Scroll navigation (Section 16)
-        if (lower.contains("scroll") || lower.contains("স্ক্রোল")) {
-            val dir = if (lower.contains("উপরে") || lower.contains("up")) "up" else "down"
-            return ParsedIntent.DirectTool("accessibilityScroll", JSONObject().put("direction", dir))
+        // 5. Universal In-App Navigation, Search, Typing, Scrolling, Clicking (Section 1 & 3 & 7-17)
+        if (lower.contains("chat খোলো") || lower.contains("চ্যাট খোলো") || lower.contains("chat kholo") || lower.contains("মেসেজ খোলো") ||
+            lower.contains("টাইপ করো") || lower.contains("type koro") || lower.contains("এখানে টাইপ") ||
+            lower.contains("search অপশন") || lower.contains("সার্চ অপশন") || lower.contains("search করো") || lower.contains("search koro") ||
+            lower.contains("সার্চ করো") || lower.contains("লিখে search") ||
+            lower.contains("নিচে যাও") || lower.contains("উপরে যাও") || lower.contains("scroll down") || lower.contains("scroll up") ||
+            lower.contains("আরও নিচে") || lower.contains("আরও উপরে") ||
+            lower.contains("back করো") || lower.contains("আগের পেজে যাও") || lower.contains("go back") ||
+            lower.contains("এটা open করো") || lower.contains("এইটা click করো") || lower.contains("click করো") || lower.contains("ক্লিক করো")
+        ) {
+            return ParsedIntent.UniversalCommand(text)
+        }
+
+        // 6. Direct App Launches (Section 4 & 5)
+        if (lower.contains("whatsapp kholo") || lower.contains("whatsapp খোলো") || lower.contains("ইউটিউব খোলো") ||
+            lower.contains("youtube খোলো") || lower.contains("facebook খোলো") || lower.contains("টিকটক খোলো") ||
+            lower.contains("tiktok খোলো")
+        ) {
+            return ParsedIntent.UniversalCommand(text)
         }
 
         // 6. YouTube Specific Automation (Section 6 & 7, Tests 1 & 2)

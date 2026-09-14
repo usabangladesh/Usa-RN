@@ -1,10 +1,10 @@
 package com.example.assistant
 
 import android.content.Context
-import com.example.audio.AudioEngine
+import com.example.apps.AppActionResult
+import com.example.apps.UniversalAppControlEngine
+import com.example.audio.AudioStreamer
 import com.example.gemini.GeminiLiveClient
-import com.example.intent.IntentRouter
-import com.example.intent.ParsedIntent
 import com.example.memory.MemoryManager
 import com.example.permissions.PermissionManager
 import com.example.security.ConfirmationManager
@@ -18,67 +18,91 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import org.json.JSONObject
 
+/**
+ * Assistant Engine Orchestrator
+ * Connects AudioStreamer, LiveSession, ToolDispatcher, and UI state.
+ */
 class RashedAssistantEngine(
     private val context: Context,
-    private val toolDispatcher: ToolDispatcher,
+    val toolDispatcher: ToolDispatcher,
     private val confirmationManager: ConfirmationManager,
     private val memoryManager: MemoryManager,
-    private val permissionManager: PermissionManager
+    private val permissionManager: PermissionManager,
+    private val universalAppControlEngine: UniversalAppControlEngine
 ) {
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
-    private val geminiClient = GeminiLiveClient()
 
-    private val _state = MutableStateFlow(AssistantState.Disconnected)
-    val state: StateFlow<AssistantState> = _state.asStateFlow()
+    val audioStreamer = AudioStreamer(
+        context = context,
+        scope = scope,
+        onSpeechRecognized = { text -> handleUserVoiceInput(text) },
+        onPartialSpeech = { partial -> _currentTranscript.value = partial },
+        onInterruptionDetected = { handleInterruption() }
+    )
+
+    val liveSession = LiveSession(
+        context = context,
+        scope = scope,
+        toolDispatcher = toolDispatcher,
+        audioStreamer = audioStreamer
+    )
+
+    val state: StateFlow<AssistantState> = liveSession.state
+    val audioAmplitude: StateFlow<Float> = audioStreamer.amplitude
 
     private val _currentTranscript = MutableStateFlow("")
     val currentTranscript: StateFlow<String> = _currentTranscript.asStateFlow()
 
-    private val _lastAssistantResponse = MutableStateFlow("Rashed AI প্রস্তুত। কথা বলতে মাইক্রোফোনে ট্যাপ করুন।")
+    private val _lastAssistantResponse = MutableStateFlow(
+        "Hey handsome! Miss me already? Tap the mic to connect with Mahi."
+    )
     val lastAssistantResponse: StateFlow<String> = _lastAssistantResponse.asStateFlow()
 
     private val _lastActionStatus = MutableStateFlow<String?>(null)
     val lastActionStatus: StateFlow<String?> = _lastActionStatus.asStateFlow()
 
     val pendingConfirmation: StateFlow<PendingConfirmation?> = confirmationManager.pendingConfirmation
+    private var pendingUniversalAction: (suspend () -> AppActionResult)? = null
 
-    val audioEngine = AudioEngine(
-        context = context,
-        scope = scope,
-        onUserSpoke = { speech -> handleUserVoiceInput(speech) },
-        onUserInterrupted = { handleInterruption() }
-    )
-
-    val audioAmplitude: StateFlow<Float> = audioEngine.audioAmplitude
+    init {
+        // Collect liveSession updates
+        scope.launch {
+            liveSession.lastVoiceResponse.collect { resp ->
+                if (!resp.isNullOrBlank()) {
+                    _lastAssistantResponse.value = resp
+                }
+            }
+        }
+        scope.launch {
+            liveSession.userTranscript.collect { trans ->
+                if (!trans.isNullOrBlank()) {
+                    _currentTranscript.value = trans
+                }
+            }
+        }
+        scope.launch {
+            liveSession.statusText.collect { status ->
+                _lastActionStatus.value = status
+            }
+        }
+    }
 
     fun startVoiceSession() {
         if (!permissionManager.hasRecordAudioPermission()) {
-            _state.value = AssistantState.Error
-            _lastAssistantResponse.value = "মাইক্রোফোন পারমিশন প্রয়োজন। অনুগ্রহ করে অনুমতি দিন।"
+            _lastAssistantResponse.value = "Hey cutie, I need microphone permission to hear your lovely voice!"
             return
         }
-
-        _state.value = AssistantState.Connecting
-        audioEngine.startAudioStream()
-        startListening()
-    }
-
-    private fun startListening() {
-        _state.value = AssistantState.Listening
-        audioEngine.startListeningForVoiceCommand()
+        liveSession.startSession()
     }
 
     fun stopVoiceSession() {
-        audioEngine.stopListeningForVoiceCommand()
-        audioEngine.stopAudioStream()
-        audioEngine.stopSpeaking()
-        _state.value = AssistantState.Disconnected
+        universalAppControlEngine.stop()
+        liveSession.disconnectSession()
     }
 
     fun toggleVoiceSession() {
-        if (_state.value == AssistantState.Disconnected || _state.value == AssistantState.Error) {
+        if (state.value == AssistantState.Disconnected || state.value == AssistantState.Error) {
             startVoiceSession()
         } else {
             stopVoiceSession()
@@ -86,16 +110,16 @@ class RashedAssistantEngine(
     }
 
     fun emergencyStop() {
-        audioEngine.emergencyStop()
+        universalAppControlEngine.stop()
+        pendingUniversalAction = null
         confirmationManager.clear()
-        _state.value = AssistantState.Disconnected
-        _lastAssistantResponse.value = "জরুরি স্টপ কার্যকর করা হয়েছে।"
-        _lastActionStatus.value = "Emergency Stop"
+        liveSession.disconnectSession()
+        _lastAssistantResponse.value = "All actions stopped, babe. I'm right here whenever you're ready."
+        _lastActionStatus.value = "Stopped"
     }
 
-    private fun handleInterruption() {
-        audioEngine.stopSpeaking()
-        startListening()
+    fun handleInterruption() {
+        liveSession.handleInterruption()
     }
 
     fun handleUserVoiceInput(rawText: String) {
@@ -103,134 +127,43 @@ class RashedAssistantEngine(
         if (text.isBlank()) return
 
         _currentTranscript.value = text
-        _state.value = AssistantState.Processing
 
-        scope.launch {
-            // Check if there is an active pending confirmation
-            if (confirmationManager.hasPending()) {
-                val parsed = IntentRouter.parseUserCommand(text)
-                when (parsed) {
-                    is ParsedIntent.UserConfirmed -> {
-                        val result = confirmationManager.confirm()
-                        speakAndShowResponse(result ?: "মেসেজ পাঠানো হয়েছে।", "Action Confirmed")
-                        return@launch
-                    }
-                    is ParsedIntent.UserCancelled -> {
-                        val result = confirmationManager.cancel()
-                        speakAndShowResponse(result ?: "বাতিল করা হয়েছে।", "Action Cancelled")
-                        return@launch
-                    }
-                    is ParsedIntent.EmergencyStop -> {
-                        emergencyStop()
-                        return@launch
-                    }
-                    else -> {
-                        // User ignored confirmation and issued another command; cancel previous pending
-                        confirmationManager.cancel()
-                    }
-                }
-            }
-
-            // Route user command
-            val intent = IntentRouter.parseUserCommand(text)
-            when (intent) {
-                is ParsedIntent.EmergencyStop -> {
-                    emergencyStop()
-                }
-
-                is ParsedIntent.UserConfirmed -> {
-                    speakAndShowResponse("কোনো নিশ্চিতকরণ বাকি নেই। আপনি কী করতে চান বলুন।", null)
-                }
-
-                is ParsedIntent.UserCancelled -> {
-                    speakAndShowResponse("ঠিক আছে, বাতিল করা হলো।", null)
-                }
-
-                is ParsedIntent.DirectSpeech -> {
-                    speakAndShowResponse(intent.message, "Rashed AI")
-                }
-
-                is ParsedIntent.DirectTool -> {
-                    executeToolDirectly(intent.toolName, intent.args)
-                }
-
-                is ParsedIntent.GeneralGemini -> {
-                    executeWithGemini(text)
-                }
+        // Check if there is a pending confirmation
+        if (confirmationManager.hasPending()) {
+            val lower = text.lowercase()
+            if (lower.contains("yes") || lower.contains("confirm") || lower.contains("sure") || lower.contains("do it")) {
+                confirmPending()
+                return
+            } else if (lower.contains("no") || lower.contains("cancel") || lower.contains("stop")) {
+                cancelPending()
+                return
             }
         }
-    }
 
-    private suspend fun executeToolDirectly(toolName: String, args: JSONObject) {
-        val result = toolDispatcher.dispatchTool(toolName, args)
-        if (result.requiresConfirmation) {
-            speakAndShowResponse(result.message, "Confirmation Needed")
-        } else {
-            val statusTag = if (result.success) "✓ Success: $toolName" else "⚠ Failed: $toolName"
-            speakAndShowResponse(result.message, statusTag)
-        }
-    }
-
-    private suspend fun executeWithGemini(userText: String) {
-        val memoryContext = memoryManager.getMemorySummaryForPrompt()
-        val response = geminiClient.sendVoiceQuery(userText, memoryContext)
-
-        if (response.functionCalls.isNotEmpty()) {
-            // Execute function calls
-            val executionResults = mutableListOf<String>()
-            var requiresConfirm = false
-
-            for (fc in response.functionCalls) {
-                val tr = toolDispatcher.dispatchTool(fc.name, fc.args)
-                if (tr.requiresConfirmation) {
-                    requiresConfirm = true
-                    speakAndShowResponse(tr.message, "Confirmation Needed")
-                    return
-                } else {
-                    executionResults.add(tr.message)
-                }
-            }
-
-            val combinedMsg = executionResults.joinToString("\n")
-            speakAndShowResponse(combinedMsg, "Tools Executed")
-        } else if (!response.text.isNullOrBlank()) {
-            speakAndShowResponse(response.text, null)
-        } else {
-            // Fallback if network or Gemini key unavailable
-            val fallbackMsg = response.error ?: "দুঃখিত, সংযোগে সমস্যা হয়েছে। আপনি সরাসরি কোনো কমান্ড বলতে পারেন।"
-            speakAndShowResponse(fallbackMsg, "Gemini Unavailable")
-        }
-    }
-
-    private fun speakAndShowResponse(responseMessage: String, status: String?) {
-        _lastAssistantResponse.value = responseMessage
-        _lastActionStatus.value = status
-        _state.value = AssistantState.Speaking
-
-        audioEngine.speak(responseMessage) {
-            // When speaking completes, resume listening seamlessly
-            if (_state.value == AssistantState.Speaking) {
-                startListening()
-            }
-        }
+        liveSession.handleUserVoiceInput(text)
     }
 
     fun confirmPending() {
         scope.launch {
             val res = confirmationManager.confirm()
-            speakAndShowResponse(res ?: "সম্পন্ন হয়েছে।", "Confirmed")
+            val msg = res ?: "Action confirmed, gorgeous!"
+            _lastAssistantResponse.value = msg
+            audioStreamer.speakText(msg)
         }
     }
 
     fun cancelPending() {
         scope.launch {
+            pendingUniversalAction = null
             val res = confirmationManager.cancel()
-            speakAndShowResponse(res ?: "বাতিল করা হয়েছে।", "Cancelled")
+            val msg = res ?: "Canceled as requested, babe."
+            _lastAssistantResponse.value = msg
+            audioStreamer.speakText(msg)
         }
     }
 
     fun release() {
         scope.cancel()
-        audioEngine.release()
+        audioStreamer.release()
     }
 }

@@ -43,6 +43,35 @@ class ToolDispatcher(
         }
 
         return when (toolName) {
+            // Browser & Web Navigation
+            "openWebsite" -> {
+                val url = args.optString("url", "")
+                if (url.isBlank()) {
+                    ToolResult(false, "Please specify which website or URL you'd like me to open, babe.", toolName, verified = false)
+                } else {
+                    val result = appController.openWebsite(url)
+                    if (result.isSuccess) {
+                        ToolResult(true, "Opened $url in your browser. Look at us surfing in style!", toolName, verified = true)
+                    } else {
+                        ToolResult(false, result.exceptionOrNull()?.message ?: "Couldn't open that website.", toolName, verified = false)
+                    }
+                }
+            }
+
+            "searchWeb" -> {
+                val query = args.optString("query", "")
+                if (query.isBlank()) {
+                    ToolResult(false, "Tell me what you want to search for, handsome.", toolName, verified = false)
+                } else {
+                    val result = appController.searchWeb(query)
+                    if (result.isSuccess) {
+                        ToolResult(true, "Searching the web for \"$query\". Let's see what we find!", toolName, verified = true)
+                    } else {
+                        ToolResult(false, result.exceptionOrNull()?.message ?: "Search couldn't be launched.", toolName, verified = false)
+                    }
+                }
+            }
+
             // App Management Tools
             "openApp" -> {
                 val appName = args.optString("appName", "")
